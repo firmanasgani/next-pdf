@@ -1,0 +1,155 @@
+.container {
+  width: 100%;
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.dropzone {
+  border: 2px dashed #cbd5e0;
+  border-radius: 12px;
+  padding: 3rem 2rem;
+  text-align: center;
+  transition: all 0.3s ease;
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  cursor: pointer;
+}
+
+.dropzone:hover {
+  border-color: #6366f1;
+  background: linear-gradient(135deg, #eef2ff 0%, #e0e7ff 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 10px 25px rgba(99, 102, 241, 0.1);
+}
+
+.dropzone.dragging {
+  border-color: #6366f1;
+  background: linear-gradient(135deg, #eef2ff 0%, #ddd6fe 100%);
+  box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.1);
+}
+
+.fileInput {
+  display: none;
+}
+
+.label {
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+}
+
+.icon {
+  width: 64px;
+  height: 64px;
+  color: #6366f1;
+  animation: float 3s ease-in-out infinite;
+}
+
+@keyframes float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+.text {
+  font-size: 1.125rem;
+  color: #334155;
+  margin: 0;
+  font-weight: 500;
+}
+
+.highlight {
+  color: #6366f1;
+  font-weight: 600;
+}
+
+.subtext {
+  font-size: 0.875rem;
+  color: #64748b;
+  margin: 0;
+}
+
+.fileList {
+  margin-top: 2rem;
+  background: white;
+  border-radius: 12px;
+  padding: 1.5rem;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+}
+
+.fileListTitle {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #1e293b;
+  margin: 0 0 1rem 0;
+}
+
+.fileItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem;
+  background: #f8fafc;
+  border-radius: 8px;
+  margin-bottom: 0.75rem;
+  transition: all 0.2s ease;
+}
+
+.fileItem:hover {
+  background: #f1f5f9;
+  transform: translateX(4px);
+}
+
+.fileItem:last-child {
+  margin-bottom: 0;
+}
+
+.fileInfo {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex: 1;
+}
+
+.fileIcon {
+  width: 32px;
+  height: 32px;
+  color: #ef4444;
+}
+
+.fileName {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #1e293b;
+  margin: 0 0 0.25rem 0;
+  word-break: break-all;
+}
+
+.fileSize {
+  font-size: 0.75rem;
+  color: #64748b;
+  margin: 0;
+}
+
+.removeButton {
+  background: none;
+  border: none;
+  color: #64748b;
+  cursor: pointer;
+  padding: 0.5rem;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.removeButton:hover {
+  background: #fee2e2;
+  color: #ef4444;
+}
