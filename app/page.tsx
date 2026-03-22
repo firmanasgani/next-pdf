@@ -5,13 +5,18 @@ import dynamic from 'next/dynamic';
 import FileUpload from '@/components/FileUpload';
 import styles from './page.module.css';
 
-// Dynamically import PDFEditor to avoid SSR issues
+// Dynamically import heavy components to avoid SSR issues
 const PDFEditor = dynamic(() => import('@/components/PDFEditor'), {
   ssr: false,
   loading: () => <div className={styles.loading}>Loading PDF Editor...</div>,
 });
 
-type Tool = 'merge' | 'compress' | 'split' | 'modify';
+const PDFAnnotator = dynamic(() => import('@/components/PDFAnnotator'), {
+  ssr: false,
+  loading: () => <div className={styles.loading}>Loading PDF Annotator...</div>,
+});
+
+type Tool = 'merge' | 'compress' | 'split' | 'modify' | 'annotate';
 type Quality = 'screen' | 'ebook' | 'printer' | 'prepress';
 
 export default function Home() {
@@ -21,6 +26,7 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [showEditor, setShowEditor] = useState(false);
+  const [showAnnotator, setShowAnnotator] = useState(false);
 
   // Compress options
   const [quality, setQuality] = useState<Quality>('ebook');
@@ -158,6 +164,34 @@ export default function Home() {
     setSuccess(null);
   };
 
+  const handleOpenAnnotator = () => {
+    if (files.length === 0) {
+      setError('Please select a PDF file first');
+      return;
+    }
+    setShowAnnotator(true);
+    setError(null);
+    setSuccess(null);
+  };
+
+  const handleAnnotatorSave = (blob: Blob) => {
+    setShowAnnotator(false);
+    const downloadUrl = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = downloadUrl;
+    a.download = `annotated_${files[0]?.name ?? 'document.pdf'}`;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(downloadUrl);
+    document.body.removeChild(a);
+    setSuccess('PDF berhasil disimpan dengan anotasi!');
+    setFiles([]);
+  };
+
+  const handleAnnotatorCancel = () => {
+    setShowAnnotator(false);
+  };
+
   return (
     <div className={styles.container}>
       <header className={styles.header}>
@@ -208,9 +242,24 @@ export default function Home() {
             <span className={styles.toolIcon}>✏️</span>
             Edit PDF
           </button>
+          <button
+            className={`${styles.toolButton} ${
+              selectedTool === 'annotate' ? styles.active : ''
+            }`}
+            onClick={() => setSelectedTool('annotate')}
+          >
+            <span className={styles.toolIcon}>✍️</span>
+            Annotate
+          </button>
         </div>
 
-        {showEditor && files.length > 0 ? (
+        {showAnnotator && files.length > 0 ? (
+          <PDFAnnotator
+            file={files[0]}
+            onSave={handleAnnotatorSave}
+            onCancel={handleAnnotatorCancel}
+          />
+        ) : showEditor && files.length > 0 ? (
           <PDFEditor
             file={files[0]}
             onSave={handleEditorSave}
@@ -338,7 +387,13 @@ export default function Home() {
           )}
 
           <button
-            onClick={selectedTool === 'modify' ? handleOpenEditor : handleProcess}
+            onClick={
+              selectedTool === 'modify'
+                ? handleOpenEditor
+                : selectedTool === 'annotate'
+                ? handleOpenAnnotator
+                : handleProcess
+            }
             disabled={loading || files.length === 0}
             className={styles.processButton}
           >
@@ -349,6 +404,8 @@ export default function Home() {
               </>
             ) : selectedTool === 'modify' ? (
               <>✏️ Open Editor</>
+            ) : selectedTool === 'annotate' ? (
+              <>✍️ Open Annotator</>
             ) : (
               <>Process PDF</>
             )}
