@@ -104,11 +104,11 @@ export default function FileUpload({
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
+            strokeWidth={1.75}
           >
             <path
               strokeLinecap="round"
               strokeLinejoin="round"
-              strokeWidth={2}
               d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
             />
           </svg>
@@ -116,9 +116,15 @@ export default function FileUpload({
             <span className={styles.highlight}>Click to upload</span> or drag and drop
           </p>
           <p className={styles.subtext}>
-            PDF files only {multiple && `(max ${maxFiles} files)`}
+            PDF files only{multiple ? ` · max ${maxFiles} files` : ''}
           </p>
         </label>
+        <div className={styles.privacyNote}>
+          <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+          </svg>
+          Your files are never stored on our servers
+        </div>
       </div>
 
       {selectedFiles.length > 0 && (

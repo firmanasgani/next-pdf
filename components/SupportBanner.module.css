@@ -1,0 +1,159 @@
+.banner {
+  position: fixed;
+  bottom: 1.5rem;
+  right: 1.5rem;
+  width: 280px;
+  background: #ffffff;
+  border: 1px solid #E2E8F0;
+  border-radius: 16px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12), 0 2px 8px rgba(0, 0, 0, 0.06);
+  z-index: 200;
+  overflow: hidden;
+  animation: slideUp 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+  transition: width 0.25s ease;
+}
+
+.banner.minimized {
+  width: 200px;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* ── Top bar (juga sebagai tombol toggle) ─────────────── */
+
+.topBar {
+  width: 100%;
+  background: linear-gradient(135deg, #FF6B35 0%, #F7931E 100%);
+  padding: 0.875rem 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  transition: filter 0.15s ease;
+}
+
+.topBar:hover {
+  filter: brightness(1.05);
+}
+
+.coffeeIcon {
+  font-size: 1.25rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.topBarText {
+  flex: 1;
+  min-width: 0;
+}
+
+.topBarTitle {
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: #ffffff;
+  margin: 0;
+  line-height: 1.2;
+}
+
+.topBarSub {
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.85);
+  margin: 0.15rem 0 0 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chevron {
+  display: flex;
+  align-items: center;
+  color: rgba(255, 255, 255, 0.9);
+  flex-shrink: 0;
+}
+
+.chevronDown {
+  transform: rotate(0deg);
+  transition: transform 0.2s ease;
+}
+
+.chevronUp {
+  transform: rotate(180deg);
+  transition: transform 0.2s ease;
+}
+
+/* ── Body ─────────────────────────────────────────────── */
+
+.body {
+  padding: 1rem;
+  animation: expandIn 0.2s ease both;
+}
+
+@keyframes expandIn {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.description {
+  font-size: 0.8125rem;
+  color: #64748B;
+  line-height: 1.5;
+  margin: 0 0 0.875rem 0;
+}
+
+.ctaButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.625rem 1rem;
+  background: linear-gradient(135deg, #FF6B35 0%, #F7931E 100%);
+  color: white;
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-decoration: none;
+  border-radius: 9px;
+  transition: opacity 0.18s ease, transform 0.18s ease;
+  box-shadow: 0 2px 8px rgba(255, 107, 53, 0.35);
+}
+
+.ctaButton:hover {
+  opacity: 0.9;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(255, 107, 53, 0.45);
+}
+
+.ctaButton:active {
+  transform: translateY(0);
+}
+
+@media (max-width: 480px) {
+  .banner {
+    right: 1rem;
+    left: 1rem;
+    width: auto;
+    bottom: 1rem;
+  }
+
+  .banner.minimized {
+    left: auto;
+    width: 200px;
+  }
+}

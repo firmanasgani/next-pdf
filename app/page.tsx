@@ -2,10 +2,11 @@
 
 import { useState } from 'react';
 import dynamic from 'next/dynamic';
+import Link from 'next/link';
 import FileUpload from '@/components/FileUpload';
+import SupportBanner from '@/components/SupportBanner';
 import styles from './page.module.css';
 
-// Dynamically import heavy components to avoid SSR issues
 const PDFEditor = dynamic(() => import('@/components/PDFEditor'), {
   ssr: false,
   loading: () => <div className={styles.loading}>Loading PDF Editor...</div>,
@@ -19,6 +20,54 @@ const PDFAnnotator = dynamic(() => import('@/components/PDFAnnotator'), {
 type Tool = 'merge' | 'compress' | 'split' | 'modify' | 'annotate';
 type Quality = 'screen' | 'ebook' | 'printer' | 'prepress';
 
+const toolConfig: Record<Tool, { label: string; title: string; icon: React.ReactNode }> = {
+  merge: {
+    label: 'Merge',
+    title: 'Merge PDF',
+    icon: (
+      <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.75}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2" />
+      </svg>
+    ),
+  },
+  compress: {
+    label: 'Compress',
+    title: 'Compress PDF',
+    icon: (
+      <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.75}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M7 16V4m0 0L3 8m4-4l4 4M17 8v12m0 0l4-4m-4 4l-4-4" />
+      </svg>
+    ),
+  },
+  split: {
+    label: 'Split',
+    title: 'Split PDF',
+    icon: (
+      <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.75}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M14.121 14.121L19 19m-7-7l7-7m-7 7l-2.879 2.879M12 12L9.121 9.121m0 5.758a3 3 0 10-4.243 4.243 3 3 0 004.243-4.243zm0-5.758a3 3 0 10-4.243-4.243 3 3 0 004.243 4.243z" />
+      </svg>
+    ),
+  },
+  modify: {
+    label: 'Edit PDF',
+    title: 'Edit PDF',
+    icon: (
+      <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.75}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+      </svg>
+    ),
+  },
+  annotate: {
+    label: 'Annotate',
+    title: 'Annotate PDF',
+    icon: (
+      <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.75}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+      </svg>
+    ),
+  },
+};
+
 export default function Home() {
   const [selectedTool, setSelectedTool] = useState<Tool>('merge');
   const [files, setFiles] = useState<File[]>([]);
@@ -28,10 +77,7 @@ export default function Home() {
   const [showEditor, setShowEditor] = useState(false);
   const [showAnnotator, setShowAnnotator] = useState(false);
 
-  // Compress options
   const [quality, setQuality] = useState<Quality>('ebook');
-
-  // Split options
   const [splitMode, setSplitMode] = useState<'all' | 'range'>('all');
   const [ranges, setRanges] = useState<{ start: number; end: number }[]>([
     { start: 1, end: 1 },
@@ -79,22 +125,14 @@ export default function Home() {
     }
   };
 
-  const processRequest = async (
-    url: string,
-    formData: FormData,
-    filename: string
-  ) => {
-    const response = await fetch(url, {
-      method: 'POST',
-      body: formData,
-    });
+  const processRequest = async (url: string, formData: FormData, filename: string) => {
+    const response = await fetch(url, { method: 'POST', body: formData });
 
     if (!response.ok) {
       const errorData = await response.json();
       throw new Error(errorData.error || 'Processing failed');
     }
 
-    // Download the file
     const blob = await response.blob();
     const downloadUrl = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -109,19 +147,9 @@ export default function Home() {
     setFiles([]);
   };
 
-  const addRange = () => {
-    setRanges([...ranges, { start: 1, end: 1 }]);
-  };
-
-  const removeRange = (index: number) => {
-    setRanges(ranges.filter((_, i) => i !== index));
-  };
-
-  const updateRange = (
-    index: number,
-    field: 'start' | 'end',
-    value: number
-  ) => {
+  const addRange = () => setRanges([...ranges, { start: 1, end: 1 }]);
+  const removeRange = (index: number) => setRanges(ranges.filter((_, i) => i !== index));
+  const updateRange = (index: number, field: 'start' | 'end', value: number) => {
     const newRanges = [...ranges];
     newRanges[index][field] = value;
     setRanges(newRanges);
@@ -136,12 +164,10 @@ export default function Home() {
     setLoading(true);
     setError(null);
     setSuccess(null);
-
     try {
       const formData = new FormData();
       formData.append('file', files[0]);
       formData.append('operations', JSON.stringify(operations));
-      
       await processRequest('/api/modify', formData, 'modified.pdf');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
@@ -150,25 +176,15 @@ export default function Home() {
     }
   };
 
-  const handleEditorCancel = () => {
-    setShowEditor(false);
-  };
-
   const handleOpenEditor = () => {
-    if (files.length === 0) {
-      setError('Please select a PDF file first');
-      return;
-    }
+    if (files.length === 0) { setError('Please select a PDF file first'); return; }
     setShowEditor(true);
     setError(null);
     setSuccess(null);
   };
 
   const handleOpenAnnotator = () => {
-    if (files.length === 0) {
-      setError('Please select a PDF file first');
-      return;
-    }
+    if (files.length === 0) { setError('Please select a PDF file first'); return; }
     setShowAnnotator(true);
     setError(null);
     setSuccess(null);
@@ -188,97 +204,71 @@ export default function Home() {
     setFiles([]);
   };
 
-  const handleAnnotatorCancel = () => {
+  const handleToolChange = (tool: Tool) => {
+    setSelectedTool(tool);
+    setFiles([]);
+    setError(null);
+    setSuccess(null);
+    setShowEditor(false);
     setShowAnnotator(false);
   };
 
   return (
     <div className={styles.container}>
-      <header className={styles.header}>
-        <h1 className={styles.title}>
-          <span className={styles.titleIcon}>📄</span>
-          NextPDF
-        </h1>
-        <p className={styles.subtitle}>
-          Professional PDF Processing Tool - Merge, Compress, Split & More
-        </p>
-      </header>
-
-      <main className={styles.main}>
-        <div className={styles.toolSelector}>
-          <button
-            className={`${styles.toolButton} ${
-              selectedTool === 'merge' ? styles.active : ''
-            }`}
-            onClick={() => setSelectedTool('merge')}
-          >
-            <span className={styles.toolIcon}>🔗</span>
-            Merge
-          </button>
-          <button
-            className={`${styles.toolButton} ${
-              selectedTool === 'compress' ? styles.active : ''
-            }`}
-            onClick={() => setSelectedTool('compress')}
-          >
-            <span className={styles.toolIcon}>🗜️</span>
-            Compress
-          </button>
-          <button
-            className={`${styles.toolButton} ${
-              selectedTool === 'split' ? styles.active : ''
-            }`}
-            onClick={() => setSelectedTool('split')}
-          >
-            <span className={styles.toolIcon}>✂️</span>
-            Split
-          </button>
-          <button
-            className={`${styles.toolButton} ${
-              selectedTool === 'modify' ? styles.active : ''
-            }`}
-            onClick={() => setSelectedTool('modify')}
-          >
-            <span className={styles.toolIcon}>✏️</span>
-            Edit PDF
-          </button>
-          <button
-            className={`${styles.toolButton} ${
-              selectedTool === 'annotate' ? styles.active : ''
-            }`}
-            onClick={() => setSelectedTool('annotate')}
-          >
-            <span className={styles.toolIcon}>✍️</span>
-            Annotate
-          </button>
+      {/* Navbar */}
+      <nav className={styles.navbar}>
+        <div className={styles.logo}>
+          <svg width="28" height="28" fill="none" stroke="#2563EB" viewBox="0 0 24 24" strokeWidth={1.75}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+          <span className={styles.logoText}>NextPDF</span>
         </div>
 
+        <div className={styles.toolSelector}>
+          {(Object.keys(toolConfig) as Tool[]).map((tool) => (
+            <button
+              key={tool}
+              className={`${styles.toolButton} ${selectedTool === tool ? styles.active : ''}`}
+              onClick={() => handleToolChange(tool)}
+            >
+              <span className={styles.toolIcon}>{toolConfig[tool].icon}</span>
+              {toolConfig[tool].label}
+            </button>
+          ))}
+        </div>
+
+        <div className={styles.navSpacer} />
+      </nav>
+
+      {/* Main Content */}
+      <main className={styles.main}>
         {showAnnotator && files.length > 0 ? (
           <PDFAnnotator
             file={files[0]}
             onSave={handleAnnotatorSave}
-            onCancel={handleAnnotatorCancel}
+            onCancel={() => setShowAnnotator(false)}
           />
         ) : showEditor && files.length > 0 ? (
           <PDFEditor
             file={files[0]}
             onSave={handleEditorSave}
-            onCancel={handleEditorCancel}
+            onCancel={() => setShowEditor(false)}
           />
         ) : (
           <div className={styles.content}>
-          <FileUpload
-            multiple={selectedTool === 'merge'}
-            onFilesSelected={handleFilesSelected}
-            maxFiles={selectedTool === 'merge' ? 10 : 1}
-          />
+            <h2 className={styles.toolTitle}>{toolConfig[selectedTool].title}</h2>
 
-          {selectedTool === 'compress' && files.length > 0 && (
-            <div className={styles.options}>
-              <h3 className={styles.optionsTitle}>Compression Quality</h3>
-              <div className={styles.qualityOptions}>
-                {(['screen', 'ebook', 'printer', 'prepress'] as Quality[]).map(
-                  (q) => (
+            <FileUpload
+              multiple={selectedTool === 'merge'}
+              onFilesSelected={handleFilesSelected}
+              maxFiles={selectedTool === 'merge' ? 10 : 1}
+            />
+
+            {selectedTool === 'compress' && files.length > 0 && (
+              <div className={styles.options}>
+                <h3 className={styles.optionsTitle}>Compression Quality</h3>
+                <div className={styles.qualityOptions}>
+                  {(['screen', 'ebook', 'printer', 'prepress'] as Quality[]).map((q) => (
                     <label key={q} className={styles.radioLabel}>
                       <input
                         type="radio"
@@ -292,133 +282,143 @@ export default function Home() {
                         {q.charAt(0).toUpperCase() + q.slice(1)}
                       </span>
                     </label>
-                  )
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {selectedTool === 'split' && files.length > 0 && (
+              <div className={styles.options}>
+                <h3 className={styles.optionsTitle}>Split Mode</h3>
+                <div className={styles.splitModeOptions}>
+                  <label className={styles.radioLabel}>
+                    <input
+                      type="radio"
+                      name="splitMode"
+                      value="all"
+                      checked={splitMode === 'all'}
+                      onChange={(e) => setSplitMode(e.target.value as 'all' | 'range')}
+                      className={styles.radio}
+                    />
+                    <span className={styles.radioText}>All Pages (Individual)</span>
+                  </label>
+                  <label className={styles.radioLabel}>
+                    <input
+                      type="radio"
+                      name="splitMode"
+                      value="range"
+                      checked={splitMode === 'range'}
+                      onChange={(e) => setSplitMode(e.target.value as 'all' | 'range')}
+                      className={styles.radio}
+                    />
+                    <span className={styles.radioText}>Custom Ranges</span>
+                  </label>
+                </div>
+
+                {splitMode === 'range' && (
+                  <div className={styles.rangeInputs}>
+                    {ranges.map((range, index) => (
+                      <div key={index} className={styles.rangeRow}>
+                        <input
+                          type="number"
+                          min="1"
+                          value={range.start}
+                          onChange={(e) => updateRange(index, 'start', parseInt(e.target.value))}
+                          className={styles.rangeInput}
+                          placeholder="Start"
+                        />
+                        <span className={styles.rangeSeparator}>to</span>
+                        <input
+                          type="number"
+                          min="1"
+                          value={range.end}
+                          onChange={(e) => updateRange(index, 'end', parseInt(e.target.value))}
+                          className={styles.rangeInput}
+                          placeholder="End"
+                        />
+                        {ranges.length > 1 && (
+                          <button
+                            onClick={() => removeRange(index)}
+                            className={styles.removeRangeButton}
+                            type="button"
+                          >
+                            ✕
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                    <button onClick={addRange} className={styles.addRangeButton} type="button">
+                      + Add Range
+                    </button>
+                  </div>
                 )}
               </div>
-            </div>
-          )}
-
-          {selectedTool === 'split' && files.length > 0 && (
-            <div className={styles.options}>
-              <h3 className={styles.optionsTitle}>Split Mode</h3>
-              <div className={styles.splitModeOptions}>
-                <label className={styles.radioLabel}>
-                  <input
-                    type="radio"
-                    name="splitMode"
-                    value="all"
-                    checked={splitMode === 'all'}
-                    onChange={(e) =>
-                      setSplitMode(e.target.value as 'all' | 'range')
-                    }
-                    className={styles.radio}
-                  />
-                  <span className={styles.radioText}>All Pages (Individual)</span>
-                </label>
-                <label className={styles.radioLabel}>
-                  <input
-                    type="radio"
-                    name="splitMode"
-                    value="range"
-                    checked={splitMode === 'range'}
-                    onChange={(e) =>
-                      setSplitMode(e.target.value as 'all' | 'range')
-                    }
-                    className={styles.radio}
-                  />
-                  <span className={styles.radioText}>Custom Ranges</span>
-                </label>
-              </div>
-
-              {splitMode === 'range' && (
-                <div className={styles.rangeInputs}>
-                  {ranges.map((range, index) => (
-                    <div key={index} className={styles.rangeRow}>
-                      <input
-                        type="number"
-                        min="1"
-                        value={range.start}
-                        onChange={(e) =>
-                          updateRange(index, 'start', parseInt(e.target.value))
-                        }
-                        className={styles.rangeInput}
-                        placeholder="Start"
-                      />
-                      <span className={styles.rangeSeparator}>to</span>
-                      <input
-                        type="number"
-                        min="1"
-                        value={range.end}
-                        onChange={(e) =>
-                          updateRange(index, 'end', parseInt(e.target.value))
-                        }
-                        className={styles.rangeInput}
-                        placeholder="End"
-                      />
-                      {ranges.length > 1 && (
-                        <button
-                          onClick={() => removeRange(index)}
-                          className={styles.removeRangeButton}
-                          type="button"
-                        >
-                          ✕
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                  <button
-                    onClick={addRange}
-                    className={styles.addRangeButton}
-                    type="button"
-                  >
-                    + Add Range
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-
-          {error && (
-            <div className={styles.alert + ' ' + styles.error}>{error}</div>
-          )}
-
-          {success && (
-            <div className={styles.alert + ' ' + styles.success}>{success}</div>
-          )}
-
-          <button
-            onClick={
-              selectedTool === 'modify'
-                ? handleOpenEditor
-                : selectedTool === 'annotate'
-                ? handleOpenAnnotator
-                : handleProcess
-            }
-            disabled={loading || files.length === 0}
-            className={styles.processButton}
-          >
-            {loading ? (
-              <>
-                <span className={styles.spinner}></span>
-                Processing...
-              </>
-            ) : selectedTool === 'modify' ? (
-              <>✏️ Open Editor</>
-            ) : selectedTool === 'annotate' ? (
-              <>✍️ Open Annotator</>
-            ) : (
-              <>Process PDF</>
             )}
-          </button>
-        </div>
+
+            {error && <div className={`${styles.alert} ${styles.error}`}>{error}</div>}
+            {success && <div className={`${styles.alert} ${styles.success}`}>{success}</div>}
+
+            <button
+              onClick={
+                selectedTool === 'modify'
+                  ? handleOpenEditor
+                  : selectedTool === 'annotate'
+                  ? handleOpenAnnotator
+                  : handleProcess
+              }
+              disabled={loading || files.length === 0}
+              className={styles.processButton}
+            >
+              {loading ? (
+                <>
+                  <span className={styles.spinner}></span>
+                  Processing...
+                </>
+              ) : selectedTool === 'modify' ? (
+                <>
+                  <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                  </svg>
+                  Open Editor
+                </>
+              ) : selectedTool === 'annotate' ? (
+                <>
+                  <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                  </svg>
+                  Open Annotator
+                </>
+              ) : (
+                <>
+                  <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                  </svg>
+                  Process PDF
+                </>
+              )}
+            </button>
+          </div>
         )}
       </main>
 
+      {/* Footer */}
       <footer className={styles.footer}>
-        <p>
-          Built with Next.js, pdf-lib & Ghostscript | No data stored permanently
+        <nav className={styles.footerLinks}>
+          <Link href="/privacy-policy" className={styles.footerLink}>Privacy Policy</Link>
+          <span className={styles.footerDivider}>·</span>
+          <Link href="/terms-of-service" className={styles.footerLink}>Terms of Service</Link>
+          <span className={styles.footerDivider}>·</span>
+          <Link href="/contact" className={styles.footerLink}>Contact Support</Link>
+        </nav>
+        <p className={styles.footerCredit}>
+          Made with ❤️ by{' '}
+          <a href="mailto:admin@firmanasgani.id" className={styles.footerCreditLink}>admin@firmanasgani.id</a>
+          {' · '}
+          <a href="https://firmanasgani.id" target="_blank" rel="noopener noreferrer" className={styles.footerCreditLink}>firmanasgani.id</a>
         </p>
       </footer>
+
+      <SupportBanner />
     </div>
   );
 }
