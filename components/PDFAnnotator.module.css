@@ -18,6 +18,7 @@
   flex-wrap: wrap;
   z-index: 10;
   flex-shrink: 0;
+  overflow: visible;
 }
 
 .toolbarInfo {
@@ -48,6 +49,7 @@
   background: #f1f5f9;
   padding: 0.25rem;
   border-radius: 10px;
+  overflow: visible;
 }
 
 .toolBtn {
@@ -62,6 +64,7 @@
   cursor: pointer;
   transition: all 0.15s ease;
   min-width: 52px;
+  position: relative;
 }
 
 .toolBtn:hover {
@@ -90,6 +93,104 @@
 
 .activeTool .toolLabel {
   color: #6366f1;
+}
+
+/* Shortcut key badge on tool button */
+.shortcutKey {
+  position: absolute;
+  top: 3px;
+  right: 4px;
+  font-size: 0.52rem;
+  font-family: monospace;
+  font-weight: 700;
+  color: #94a3b8;
+  line-height: 1;
+  letter-spacing: 0;
+}
+
+.activeTool .shortcutKey {
+  color: #818cf8;
+}
+
+/* Custom tooltip */
+.tooltip {
+  position: absolute;
+  top: calc(100% + 10px);
+  left: 50%;
+  transform: translateX(-50%) translateY(-4px);
+  background: #0f172a;
+  color: white;
+  padding: 8px 12px;
+  border-radius: 8px;
+  width: max-content;
+  max-width: 200px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  white-space: normal;
+}
+
+.tooltip::before {
+  content: '';
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-bottom-color: #0f172a;
+}
+
+.toolBtn:hover .tooltip {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+.tooltipTitle {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #f1f5f9;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.tooltipKbd {
+  background: #334155;
+  color: #94a3b8;
+  border: 1px solid #475569;
+  border-radius: 3px;
+  padding: 1px 5px;
+  font-size: 0.68rem;
+  font-family: monospace;
+  font-style: normal;
+}
+
+.tooltipDesc {
+  font-size: 0.72rem;
+  color: #94a3b8;
+  line-height: 1.4;
+}
+
+/* Notes color dot presets */
+.noteColorDot {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(0, 0, 0, 0.15);
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+  outline-offset: 2px;
+  transition: transform 0.1s;
+}
+
+.noteColorDot:hover {
+  transform: scale(1.15);
 }
 
 /* Options group (color, size, etc.) */

@@ -13,7 +13,7 @@ const PAGE_WIDTH = 650;
 // Approximate rendered page height for ratio estimations (A4/Letter average)
 const EST_PAGE_HEIGHT = 842;
 
-type Tool = 'select' | 'pen' | 'eraser' | 'text' | 'rect' | 'signature';
+type Tool = 'select' | 'pen' | 'eraser' | 'text' | 'rect' | 'signature' | 'notes';
 
 interface DrawPoint {
   xRatio: number;
@@ -86,6 +86,32 @@ function hitTest(ann: Annotation, xRatio: number, yRatio: number): boolean {
     yRatio >= b.y - pad &&
     yRatio <= b.y + b.h + pad
   );
+}
+
+function getResizeHandle(
+  ann: Annotation,
+  xRatio: number,
+  yRatio: number,
+  W: number,
+  H: number
+): 'tl' | 'tr' | 'bl' | 'br' | null {
+  if (ann.type !== 'signature' && ann.type !== 'rect' && ann.type !== 'notes') return null;
+  const b = getAnnotationBounds(ann);
+  if (!b) return null;
+  const pad = 6;
+  const hitR = 14;
+  const corners: ['tl' | 'tr' | 'bl' | 'br', number, number][] = [
+    ['tl', b.x * W - pad, b.y * H - pad],
+    ['tr', (b.x + b.w) * W + pad, b.y * H - pad],
+    ['bl', b.x * W - pad, (b.y + b.h) * H + pad],
+    ['br', (b.x + b.w) * W + pad, (b.y + b.h) * H + pad],
+  ];
+  const cx = xRatio * W;
+  const cy = yRatio * H;
+  for (const [name, hx, hy] of corners) {
+    if (Math.abs(cx - hx) <= hitR && Math.abs(cy - hy) <= hitR) return name;
+  }
+  return null;
 }
 
 function moveAnnotation(ann: Annotation, dx: number, dy: number): Annotation {
@@ -164,6 +190,39 @@ function renderAnnotation(
       }
       break;
     }
+    case 'notes': {
+      const nw = w || 130;
+      const nh = h || 76;
+      ctx.fillStyle = ann.color ?? '#fef08a';
+      ctx.fillRect(x, y, nw, nh);
+      ctx.strokeStyle = 'rgba(0,0,0,0.2)';
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(x, y, nw, nh);
+      if (ann.text) {
+        ctx.fillStyle = '#1e293b';
+        const fs = ann.fontSize ?? 13;
+        ctx.font = `${fs}px Arial, sans-serif`;
+        const padding = 6;
+        const maxW = nw - padding * 2;
+        const lineH = fs * 1.4;
+        let lineY = y + fs + padding;
+        const words = ann.text.split(' ');
+        let line = '';
+        for (const word of words) {
+          const test = line + (line ? ' ' : '') + word;
+          if (ctx.measureText(test).width > maxW && line) {
+            ctx.fillText(line, x + padding, lineY);
+            line = word;
+            lineY += lineH;
+            if (lineY > y + nh - padding) break;
+          } else {
+            line = test;
+          }
+        }
+        if (line) ctx.fillText(line, x + padding, lineY);
+      }
+      break;
+    }
   }
   ctx.restore();
 }
@@ -214,8 +273,10 @@ export default function PDFAnnotator({ file, onSave, onCancel }: PDFAnnotatorPro
   const [rectColor, setRectColor] = useState('#ffffff');
   const [fontSize, setFontSize] = useState(16);
   const [textColor, setTextColor] = useState('#000000');
+  const [noteColor, setNoteColor] = useState('#fef08a');
   const [showSigDrawer, setShowSigDrawer] = useState(false);
   const [pendingPos, setPendingPos] = useState<{ page: number; xRatio: number; yRatio: number } | null>(null);
+  const [hoveredHandle, setHoveredHandle] = useState<'tl' | 'tr' | 'bl' | 'br' | null>(null);
   const [textInput, setTextInput] = useState<{
     page: number;
     xRatio: number;
@@ -240,6 +301,12 @@ export default function PDFAnnotator({ file, onSave, onCancel }: PDFAnnotatorPro
   const draggingAnnIdRef = useRef<string | null>(null);
   const dragOrigAnnRef = useRef<Annotation | null>(null);
   const textInputRef = useRef<HTMLInputElement>(null);
+  const resizingRef = useRef<{
+    annId: string;
+    handle: 'tl' | 'tr' | 'bl' | 'br';
+    origBounds: { x: number; y: number; w: number; h: number };
+    startPos: DrawPoint;
+  } | null>(null);
 
   // Sync refs
   useEffect(() => { annotationsRef.current = annotations; }, [annotations]);
@@ -269,11 +336,33 @@ export default function PDFAnnotator({ file, onSave, onCancel }: PDFAnnotatorPro
     setTextInput(null);
   }, [currentTool]);
 
-  // Delete selected annotation with keyboard
+  // Keyboard shortcuts
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const active = document.activeElement;
       if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')) return;
+
+      // Tool shortcuts
+      if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+        const toolMap: Record<string, Tool> = {
+          v: 'select', V: 'select',
+          p: 'pen', P: 'pen',
+          e: 'eraser', E: 'eraser',
+          t: 'text', T: 'text',
+          r: 'rect', R: 'rect',
+          n: 'notes', N: 'notes',
+          s: 'signature', S: 'signature',
+        };
+        if (toolMap[e.key]) { setCurrentTool(toolMap[e.key]); return; }
+      }
+
+      // Undo
+      if ((e.key === 'z' || e.key === 'Z') && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        setAnnotations((prev) => prev.slice(0, -1));
+        return;
+      }
+
       if ((e.key === 'Delete' || e.key === 'Backspace') && selectedAnnId) {
         setAnnotations((prev) => prev.filter((a) => a.id !== selectedAnnId));
         setSelectedAnnId(null);
@@ -347,6 +436,23 @@ export default function PDFAnnotator({ file, onSave, onCancel }: PDFAnnotatorPro
 
     // ── Select / Hand tool ──
     if (currentTool === 'select') {
+      // Check for resize handle on currently selected annotation
+      const selAnn = selectedAnnIdRef.current
+        ? annotationsRef.current.find((a) => a.id === selectedAnnIdRef.current)
+        : null;
+      if (selAnn) {
+        const handle = getResizeHandle(selAnn, pos.xRatio, pos.yRatio, canvas.width, canvas.height);
+        if (handle) {
+          const b = getAnnotationBounds(selAnn)!;
+          resizingRef.current = { annId: selAnn.id, handle, origBounds: b, startPos: pos };
+          drawStartRef.current = { ...pos, page: pageNum };
+          isDrawingRef.current = true;
+          liveRef.current = { ...selAnn };
+          setLiveAnnotation({ ...selAnn });
+          return;
+        }
+      }
+
       const hit = [...annotationsRef.current]
         .reverse()
         .find((a) => a.page === pageNum && hitTest(a, pos.xRatio, pos.yRatio));
@@ -358,7 +464,6 @@ export default function PDFAnnotator({ file, onSave, onCancel }: PDFAnnotatorPro
         dragOrigAnnRef.current = hit;
         drawStartRef.current = { ...pos, page: pageNum };
         isDrawingRef.current = true;
-        // Show dragged annotation as liveAnnotation
         liveRef.current = { ...hit };
         setLiveAnnotation({ ...hit });
       } else {
@@ -368,8 +473,8 @@ export default function PDFAnnotator({ file, onSave, onCancel }: PDFAnnotatorPro
       return;
     }
 
-    // ── Text tool ──
-    if (currentTool === 'text') {
+    // ── Text / Notes tool ──
+    if (currentTool === 'text' || currentTool === 'notes') {
       e.preventDefault();
       setTextInput({ page: pageNum, xRatio: pos.xRatio, yRatio: pos.yRatio, value: '' });
       return;
@@ -423,6 +528,17 @@ export default function PDFAnnotator({ file, onSave, onCancel }: PDFAnnotatorPro
 
     // Hover detection for select tool cursor
     if (currentTool === 'select' && !isDrawingRef.current) {
+      const selAnn = selectedAnnIdRef.current
+        ? annotationsRef.current.find((a) => a.id === selectedAnnIdRef.current)
+        : null;
+      const canvas2 = canvasRefs.current[pageNum];
+      if (selAnn && canvas2) {
+        const h = getResizeHandle(selAnn, pos.xRatio, pos.yRatio, canvas2.width, canvas2.height);
+        setHoveredHandle(h);
+        if (h) { setHoveredAnnId(null); return; }
+      } else {
+        setHoveredHandle(null);
+      }
       const hit = [...annotationsRef.current]
         .reverse()
         .find((a) => a.page === pageNum && hitTest(a, pos.xRatio, pos.yRatio));
@@ -432,6 +548,27 @@ export default function PDFAnnotator({ file, onSave, onCancel }: PDFAnnotatorPro
     if (!isDrawingRef.current) return;
     const start = drawStartRef.current;
     if (!start || start.page !== pageNum) return;
+
+    // ── Resize ──
+    if (currentTool === 'select' && resizingRef.current) {
+      const { annId, handle, origBounds } = resizingRef.current;
+      const ann = annotationsRef.current.find((a) => a.id === annId);
+      if (!ann) return;
+      const dx = pos.xRatio - start.xRatio;
+      const dy = pos.yRatio - start.yRatio;
+      let { x: nx, y: ny, w: nw, h: nh } = origBounds;
+      switch (handle) {
+        case 'br': nw = Math.max(0.02, origBounds.w + dx); nh = Math.max(0.02, origBounds.h + dy); break;
+        case 'bl': nx = origBounds.x + dx; nw = Math.max(0.02, origBounds.w - dx); nh = Math.max(0.02, origBounds.h + dy); break;
+        case 'tr': nw = Math.max(0.02, origBounds.w + dx); ny = origBounds.y + dy; nh = Math.max(0.02, origBounds.h - dy); break;
+        case 'tl': nx = origBounds.x + dx; ny = origBounds.y + dy; nw = Math.max(0.02, origBounds.w - dx); nh = Math.max(0.02, origBounds.h - dy); break;
+      }
+      const resized: Annotation = { ...ann, xRatio: nx, yRatio: ny, wRatio: nw, hRatio: nh };
+      liveRef.current = resized;
+      setLiveAnnotation(resized);
+      redrawCanvas(pageNum, annotationsRef.current, resized, selectedAnnIdRef.current);
+      return;
+    }
 
     // ── Select drag ──
     if (currentTool === 'select' && draggingAnnIdRef.current && dragOrigAnnRef.current) {
@@ -473,6 +610,19 @@ export default function PDFAnnotator({ file, onSave, onCancel }: PDFAnnotatorPro
 
     const live = liveRef.current;
 
+    // ── Finalize resize ──
+    if (currentTool === 'select' && resizingRef.current && live) {
+      const resizedId = resizingRef.current.annId;
+      setAnnotations((prev) => prev.map((a) => (a.id === resizedId ? live : a)));
+      setSelectedAnnId(live.id);
+      resizingRef.current = null;
+      liveRef.current = null;
+      setLiveAnnotation(null);
+      drawStartRef.current = null;
+      isDrawingRef.current = false;
+      return;
+    }
+
     // ── Finalize drag ──
     if (currentTool === 'select' && draggingAnnIdRef.current && live) {
       const movedId = draggingAnnIdRef.current;
@@ -500,6 +650,7 @@ export default function PDFAnnotator({ file, onSave, onCancel }: PDFAnnotatorPro
         id: `ann_${Date.now()}_${Math.random().toString(36).slice(2)}`,
       };
       setAnnotations((prev) => [...prev, final]);
+      setCurrentTool('select');
     }
 
     liveRef.current = null;
@@ -515,18 +666,35 @@ export default function PDFAnnotator({ file, onSave, onCancel }: PDFAnnotatorPro
       setTextInput(null);
       return;
     }
-    const ann: Annotation = {
-      id: `ann_${Date.now()}`,
-      type: 'text',
-      page: textInput.page,
-      xRatio: textInput.xRatio,
-      yRatio: textInput.yRatio,
-      text: textInput.value,
-      fontSize,
-      color: textColor,
-    };
-    setAnnotations((prev) => [...prev, ann]);
+    if (currentTool === 'notes') {
+      const ann: Annotation = {
+        id: `ann_${Date.now()}`,
+        type: 'notes',
+        page: textInput.page,
+        xRatio: textInput.xRatio,
+        yRatio: textInput.yRatio,
+        wRatio: 0.22,
+        hRatio: 0.1,
+        text: textInput.value,
+        fontSize: 13,
+        color: noteColor,
+      };
+      setAnnotations((prev) => [...prev, ann]);
+    } else {
+      const ann: Annotation = {
+        id: `ann_${Date.now()}`,
+        type: 'text',
+        page: textInput.page,
+        xRatio: textInput.xRatio,
+        yRatio: textInput.yRatio,
+        text: textInput.value,
+        fontSize,
+        color: textColor,
+      };
+      setAnnotations((prev) => [...prev, ann]);
+    }
     setTextInput(null);
+    setCurrentTool('select');
   };
 
   // ── Signature ────────────────────────────────────────────────────────────────
@@ -551,6 +719,7 @@ export default function PDFAnnotator({ file, onSave, onCancel }: PDFAnnotatorPro
     img.src = imageData;
     setShowSigDrawer(false);
     setPendingPos(null);
+    setCurrentTool('select');
   };
 
   // ── Actions ──────────────────────────────────────────────────────────────────
@@ -592,6 +761,8 @@ export default function PDFAnnotator({ file, onSave, onCancel }: PDFAnnotatorPro
 
   const getCursor = (): string => {
     if (currentTool === 'select') {
+      const activeHandle = resizingRef.current?.handle ?? hoveredHandle;
+      if (activeHandle) return activeHandle === 'tl' || activeHandle === 'br' ? 'nwse-resize' : 'nesw-resize';
       if (isDrawingRef.current) return 'grabbing';
       return hoveredAnnId ? 'grab' : 'default';
     }
@@ -602,26 +773,39 @@ export default function PDFAnnotator({ file, onSave, onCancel }: PDFAnnotatorPro
       text: 'text',
       rect: 'crosshair',
       signature: 'copy',
+      notes: 'cell',
     };
     return map[currentTool];
   };
 
   const toolHints: Record<Tool, string> = {
-    select: '🖐 Klik anotasi untuk memilih, drag untuk pindahkan • Delete/Backspace untuk hapus',
+    select: '🖐 Klik anotasi untuk memilih, drag untuk pindahkan • Drag sudut untuk resize • Delete untuk hapus',
     pen: '✏️ Klik & drag untuk menggambar bebas',
     eraser: '⬜ Klik & drag untuk menutup konten dengan warna putih',
     text: '📝 Klik di halaman, ketik teks lalu Enter untuk konfirmasi',
     rect: '▭ Klik & drag untuk membuat kotak (putih = tutup teks)',
+    notes: '📌 Klik di halaman, ketik isi catatan lalu Enter',
     signature: '✍️ Klik di halaman untuk menempatkan tanda tangan',
   };
 
-  const toolList: { tool: Tool; icon: string; label: string }[] = [
-    { tool: 'select', icon: '🖐', label: 'Pilih' },
-    { tool: 'pen', icon: '✏️', label: 'Pen' },
-    { tool: 'eraser', icon: '⬜', label: 'Eraser' },
-    { tool: 'text', icon: 'T', label: 'Teks' },
-    { tool: 'rect', icon: '▭', label: 'Kotak' },
-    { tool: 'signature', icon: '✍️', label: 'Ttd' },
+  const toolDescriptions: Record<Tool, string> = {
+    select: 'Pilih, pindah & resize anotasi',
+    pen: 'Gambar bebas dengan pensil',
+    eraser: 'Tutup konten dengan blok putih',
+    text: 'Tambahkan teks ke halaman',
+    rect: 'Buat kotak/persegi panjang',
+    notes: 'Tambahkan sticky note berwarna',
+    signature: 'Tempatkan tanda tangan',
+  };
+
+  const toolList: { tool: Tool; icon: string; label: string; shortcut: string }[] = [
+    { tool: 'select', icon: '🖐', label: 'Pilih', shortcut: 'V' },
+    { tool: 'pen', icon: '✏️', label: 'Pen', shortcut: 'P' },
+    { tool: 'eraser', icon: '⬜', label: 'Eraser', shortcut: 'E' },
+    { tool: 'text', icon: 'T', label: 'Teks', shortcut: 'T' },
+    { tool: 'rect', icon: '▭', label: 'Kotak', shortcut: 'R' },
+    { tool: 'notes', icon: '📌', label: 'Notes', shortcut: 'N' },
+    { tool: 'signature', icon: '✍️', label: 'Ttd', shortcut: 'S' },
   ];
 
   return (
@@ -634,15 +818,19 @@ export default function PDFAnnotator({ file, onSave, onCancel }: PDFAnnotatorPro
         </div>
 
         <div className={styles.toolGroup}>
-          {toolList.map(({ tool, icon, label }) => (
+          {toolList.map(({ tool, icon, label, shortcut }) => (
             <button
               key={tool}
               className={`${styles.toolBtn} ${currentTool === tool ? styles.activeTool : ''}`}
               onClick={() => setCurrentTool(tool)}
-              title={toolHints[tool]}
             >
               <span className={styles.toolIcon}>{icon}</span>
               <span className={styles.toolLabel}>{label}</span>
+              <span className={styles.shortcutKey}>{shortcut}</span>
+              <span className={styles.tooltip}>
+                <span className={styles.tooltipTitle}>{label} <kbd className={styles.tooltipKbd}>{shortcut}</kbd></span>
+                <span className={styles.tooltipDesc}>{toolDescriptions[tool]}</span>
+              </span>
             </button>
           ))}
         </div>
@@ -684,6 +872,21 @@ export default function PDFAnnotator({ file, onSave, onCancel }: PDFAnnotatorPro
               <label className={styles.optLabel}>Warna</label>
               <input type="color" value={rectColor} onChange={(e) => setRectColor(e.target.value)} className={styles.colorPicker} />
               <button className={styles.whiteBtn} onClick={() => setRectColor('#ffffff')}>Putih</button>
+            </>
+          )}
+          {currentTool === 'notes' && (
+            <>
+              <label className={styles.optLabel}>Warna</label>
+              <input type="color" value={noteColor} onChange={(e) => setNoteColor(e.target.value)} className={styles.colorPicker} />
+              {['#fef08a','#bbf7d0','#bfdbfe','#fecaca','#e9d5ff'].map((c) => (
+                <button
+                  key={c}
+                  className={styles.noteColorDot}
+                  style={{ background: c, outline: noteColor === c ? '2px solid #6366f1' : 'none' }}
+                  onClick={() => setNoteColor(c)}
+                  title={c}
+                />
+              ))}
             </>
           )}
         </div>

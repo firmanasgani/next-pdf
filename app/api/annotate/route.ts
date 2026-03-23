@@ -8,7 +8,7 @@ interface DrawPoint {
 
 interface Annotation {
   id: string;
-  type: 'pen' | 'eraser' | 'text' | 'rect' | 'signature';
+  type: 'pen' | 'eraser' | 'text' | 'rect' | 'signature' | 'notes';
   page: number;
   xRatio: number;
   yRatio: number;
@@ -163,6 +163,30 @@ export async function POST(req: NextRequest) {
               font: helvetica,
               color: textColor,
             });
+            break;
+          }
+
+          case 'notes': {
+            const nw = (ann.wRatio ?? 0.22) * pdfW;
+            const nh = (ann.hRatio ?? 0.1) * pdfH;
+            if (nw <= 0 || nh <= 0) break;
+            const noteY = pdfH - ann.yRatio * pdfH - nh;
+            const bgColor = ann.color ? hexToRgb(ann.color) : rgb(1, 0.94, 0.54);
+            page.drawRectangle({ x: pdfX, y: noteY, width: nw, height: nh, color: bgColor, borderWidth: 0 });
+            if (ann.text?.trim()) {
+              const fs = Math.max(4, (ann.fontSize ?? 13) * scale);
+              const safeText = ann.text.split('').filter((ch) => ch.charCodeAt(0) < 256).join('');
+              if (safeText) {
+                page.drawText(safeText, {
+                  x: pdfX + 4 * scale,
+                  y: noteY + nh - fs - 4 * scale,
+                  size: fs,
+                  font: helvetica,
+                  color: rgb(0.07, 0.11, 0.18),
+                  maxWidth: nw - 8 * scale,
+                });
+              }
+            }
             break;
           }
 
