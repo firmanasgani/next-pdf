@@ -25,7 +25,7 @@ export default function TermsOfService() {
         <article className={styles.content}>
           <span className={styles.tag}>Legal</span>
           <h1 className={styles.title}>Terms of Service</h1>
-          <p className={styles.lastUpdated}>Last updated: March 2026</p>
+          <p className={styles.lastUpdated}>Last updated: March 2026 (rev. 2)</p>
 
           <div className={styles.infoBox}>
             <p>
@@ -46,6 +46,9 @@ export default function TermsOfService() {
               <li><strong>Split PDF</strong> — extract individual pages or custom page ranges</li>
               <li><strong>Edit PDF</strong> — visually delete, rotate, and reorder pages</li>
               <li><strong>Annotate PDF</strong> — add text annotations and drawings to PDF pages</li>
+              <li><strong>Word → PDF</strong> — convert .doc and .docx files to PDF via LibreOffice</li>
+              <li><strong>Image → PDF</strong> — convert JPEG and PNG images to PDF (up to 20 images per operation)</li>
+              <li><strong>PPT → PDF</strong> — convert .ppt and .pptx presentations to PDF via LibreOffice</li>
             </ul>
           </div>
 
@@ -70,8 +73,10 @@ export default function TermsOfService() {
             </p>
             <ul className={styles.list}>
               <li><strong>File size:</strong> Maximum 50 MB per file</li>
-              <li><strong>File type:</strong> PDF files only (validated by magic number, not just extension)</li>
-              <li><strong>Merge:</strong> Maximum 10 files per operation</li>
+              <li><strong>File type (PDF tools):</strong> PDF files only (validated by magic number, not just extension)</li>
+              <li><strong>File type (Convert tools):</strong> .doc/.docx for Word, JPEG/PNG for Image, .ppt/.pptx for PowerPoint</li>
+              <li><strong>Merge:</strong> Maximum 10 PDF files per operation</li>
+              <li><strong>Image → PDF:</strong> Maximum 20 images per operation</li>
               <li><strong>Rate limit:</strong> 10 requests per minute per IP address</li>
               <li><strong>Session TTL:</strong> Temporary files are automatically deleted within 30 minutes</li>
             </ul>
