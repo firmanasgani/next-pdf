@@ -17,13 +17,36 @@ const PDFAnnotator = dynamic(() => import('@/components/PDFAnnotator'), {
   loading: () => <div className={styles.loading}>Loading PDF Annotator...</div>,
 });
 
-type Tool = 'merge' | 'compress' | 'split' | 'modify' | 'annotate';
+type Tool =
+  | 'merge'
+  | 'compress'
+  | 'split'
+  | 'modify'
+  | 'annotate'
+  | 'word-to-pdf'
+  | 'image-to-pdf'
+  | 'ppt-to-pdf';
+
 type Quality = 'screen' | 'ebook' | 'printer' | 'prepress';
 
-const toolConfig: Record<Tool, { label: string; title: string; icon: React.ReactNode }> = {
+interface ToolConfig {
+  label: string;
+  description: string;
+  icon: React.ReactNode;
+  accept: string;
+  multiple: boolean;
+  maxFiles: number;
+  fileTypeLabel: string;
+}
+
+const toolConfig: Record<Tool, ToolConfig> = {
   merge: {
-    label: 'Merge',
-    title: 'Merge PDF',
+    label: 'Merge PDF',
+    description: 'Combine multiple PDFs into one document',
+    accept: '.pdf',
+    multiple: true,
+    maxFiles: 10,
+    fileTypeLabel: 'PDF files · max 10 files',
     icon: (
       <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.75}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2" />
@@ -31,8 +54,12 @@ const toolConfig: Record<Tool, { label: string; title: string; icon: React.React
     ),
   },
   compress: {
-    label: 'Compress',
-    title: 'Compress PDF',
+    label: 'Compress PDF',
+    description: 'Reduce PDF file size while preserving quality',
+    accept: '.pdf',
+    multiple: false,
+    maxFiles: 1,
+    fileTypeLabel: 'PDF files only',
     icon: (
       <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.75}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M7 16V4m0 0L3 8m4-4l4 4M17 8v12m0 0l4-4m-4 4l-4-4" />
@@ -40,8 +67,12 @@ const toolConfig: Record<Tool, { label: string; title: string; icon: React.React
     ),
   },
   split: {
-    label: 'Split',
-    title: 'Split PDF',
+    label: 'Split PDF',
+    description: 'Extract pages or split into multiple files',
+    accept: '.pdf',
+    multiple: false,
+    maxFiles: 1,
+    fileTypeLabel: 'PDF files only',
     icon: (
       <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.75}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M14.121 14.121L19 19m-7-7l7-7m-7 7l-2.879 2.879M12 12L9.121 9.121m0 5.758a3 3 0 10-4.243 4.243 3 3 0 004.243-4.243zm0-5.758a3 3 0 10-4.243-4.243 3 3 0 004.243 4.243z" />
@@ -50,7 +81,11 @@ const toolConfig: Record<Tool, { label: string; title: string; icon: React.React
   },
   modify: {
     label: 'Edit PDF',
-    title: 'Edit PDF',
+    description: 'Rotate, delete, or reorder pages',
+    accept: '.pdf',
+    multiple: false,
+    maxFiles: 1,
+    fileTypeLabel: 'PDF files only',
     icon: (
       <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.75}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -58,15 +93,69 @@ const toolConfig: Record<Tool, { label: string; title: string; icon: React.React
     ),
   },
   annotate: {
-    label: 'Annotate',
-    title: 'Annotate PDF',
+    label: 'Annotate PDF',
+    description: 'Draw, highlight, and add notes to PDF',
+    accept: '.pdf',
+    multiple: false,
+    maxFiles: 1,
+    fileTypeLabel: 'PDF files only',
     icon: (
       <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.75}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
       </svg>
     ),
   },
+  'word-to-pdf': {
+    label: 'Word → PDF',
+    description: 'Convert Word documents (.doc, .docx) to PDF',
+    accept: '.doc,.docx',
+    multiple: false,
+    maxFiles: 1,
+    fileTypeLabel: 'Word files (.doc, .docx)',
+    icon: (
+      <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.75}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+      </svg>
+    ),
+  },
+  'image-to-pdf': {
+    label: 'Image → PDF',
+    description: 'Convert JPEG or PNG images to PDF',
+    accept: '.jpg,.jpeg,.png,image/jpeg,image/png',
+    multiple: true,
+    maxFiles: 20,
+    fileTypeLabel: 'JPEG or PNG · max 20 images',
+    icon: (
+      <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.75}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+      </svg>
+    ),
+  },
+  'ppt-to-pdf': {
+    label: 'PPT → PDF',
+    description: 'Convert PowerPoint slides (.ppt, .pptx) to PDF',
+    accept: '.ppt,.pptx',
+    multiple: false,
+    maxFiles: 1,
+    fileTypeLabel: 'PowerPoint files (.ppt, .pptx)',
+    icon: (
+      <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.75}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" />
+      </svg>
+    ),
+  },
 };
+
+const toolGroups: { label: string; tools: Tool[] }[] = [
+  {
+    label: 'PDF Tools',
+    tools: ['merge', 'compress', 'split', 'modify', 'annotate'],
+  },
+  {
+    label: 'Convert to PDF',
+    tools: ['word-to-pdf', 'image-to-pdf', 'ppt-to-pdf'],
+  },
+];
 
 export default function Home() {
   const [selectedTool, setSelectedTool] = useState<Tool>('merge');
@@ -76,12 +165,11 @@ export default function Home() {
   const [success, setSuccess] = useState<string | null>(null);
   const [showEditor, setShowEditor] = useState(false);
   const [showAnnotator, setShowAnnotator] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const [quality, setQuality] = useState<Quality>('ebook');
   const [splitMode, setSplitMode] = useState<'all' | 'range'>('all');
-  const [ranges, setRanges] = useState<{ start: number; end: number }[]>([
-    { start: 1, end: 1 },
-  ]);
+  const [ranges, setRanges] = useState<{ start: number; end: number }[]>([{ start: 1, end: 1 }]);
 
   const handleFilesSelected = (selectedFiles: File[]) => {
     setFiles(selectedFiles);
@@ -112,11 +200,17 @@ export default function Home() {
       } else if (selectedTool === 'split') {
         formData.append('file', files[0]);
         formData.append('mode', splitMode);
-        if (splitMode === 'range') {
-          formData.append('ranges', JSON.stringify(ranges));
-        }
-        const filename = splitMode === 'all' ? 'split_pdfs.zip' : 'split.pdf';
-        await processRequest('/api/split', formData, filename);
+        if (splitMode === 'range') formData.append('ranges', JSON.stringify(ranges));
+        await processRequest('/api/split', formData, splitMode === 'all' ? 'split_pdfs.zip' : 'split.pdf');
+      } else if (selectedTool === 'word-to-pdf') {
+        formData.append('file', files[0]);
+        await processRequest('/api/word-to-pdf', formData, files[0].name.replace(/\.[^.]+$/, '.pdf'));
+      } else if (selectedTool === 'image-to-pdf') {
+        files.forEach((file) => formData.append('files', file));
+        await processRequest('/api/image-to-pdf', formData, 'converted.pdf');
+      } else if (selectedTool === 'ppt-to-pdf') {
+        formData.append('file', files[0]);
+        await processRequest('/api/ppt-to-pdf', formData, files[0].name.replace(/\.[^.]+$/, '.pdf'));
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
@@ -211,195 +305,269 @@ export default function Home() {
     setSuccess(null);
     setShowEditor(false);
     setShowAnnotator(false);
+    setSidebarOpen(false);
+  };
+
+  const cfg = toolConfig[selectedTool];
+
+  const isConvertTool = ['word-to-pdf', 'image-to-pdf', 'ppt-to-pdf'].includes(selectedTool);
+
+  const getButtonLabel = () => {
+    if (loading) return null;
+    if (selectedTool === 'modify') return 'Open Editor';
+    if (selectedTool === 'annotate') return 'Open Annotator';
+    if (isConvertTool) return 'Convert to PDF';
+    return 'Process PDF';
+  };
+
+  const getButtonAction = () => {
+    if (selectedTool === 'modify') return handleOpenEditor;
+    if (selectedTool === 'annotate') return handleOpenAnnotator;
+    return handleProcess;
   };
 
   return (
     <div className={styles.container}>
       {/* Navbar */}
       <nav className={styles.navbar}>
+        <button
+          className={styles.hamburger}
+          onClick={() => setSidebarOpen((v) => !v)}
+          aria-label="Toggle menu"
+        >
+          <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+          </svg>
+        </button>
+
         <div className={styles.logo}>
-          <svg width="28" height="28" fill="none" stroke="#2563EB" viewBox="0 0 24 24" strokeWidth={1.75}>
+          <svg width="26" height="26" fill="none" stroke="#2563EB" viewBox="0 0 24 24" strokeWidth={1.75}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
           </svg>
           <span className={styles.logoText}>NextPDF</span>
         </div>
 
-        <div className={styles.toolSelector}>
-          {(Object.keys(toolConfig) as Tool[]).map((tool) => (
-            <button
-              key={tool}
-              className={`${styles.toolButton} ${selectedTool === tool ? styles.active : ''}`}
-              onClick={() => handleToolChange(tool)}
-            >
-              <span className={styles.toolIcon}>{toolConfig[tool].icon}</span>
-              {toolConfig[tool].label}
-            </button>
-          ))}
+        <div className={styles.navCurrentTool}>
+          <span className={styles.navToolIcon}>{cfg.icon}</span>
+          <span className={styles.navToolLabel}>{cfg.label}</span>
         </div>
-
-        <div className={styles.navSpacer} />
       </nav>
 
-      {/* Main Content */}
-      <main className={styles.main}>
-        {showAnnotator && files.length > 0 ? (
-          <PDFAnnotator
-            file={files[0]}
-            onSave={handleAnnotatorSave}
-            onCancel={() => setShowAnnotator(false)}
+      {/* Body */}
+      <div className={styles.body}>
+        {/* Sidebar overlay (mobile) */}
+        {sidebarOpen && (
+          <div
+            className={styles.overlay}
+            onClick={() => setSidebarOpen(false)}
           />
-        ) : showEditor && files.length > 0 ? (
-          <PDFEditor
-            file={files[0]}
-            onSave={handleEditorSave}
-            onCancel={() => setShowEditor(false)}
-          />
-        ) : (
-          <div className={styles.content}>
-            <h2 className={styles.toolTitle}>{toolConfig[selectedTool].title}</h2>
+        )}
 
-            <FileUpload
-              multiple={selectedTool === 'merge'}
-              onFilesSelected={handleFilesSelected}
-              maxFiles={selectedTool === 'merge' ? 10 : 1}
-            />
-
-            {selectedTool === 'compress' && files.length > 0 && (
-              <div className={styles.options}>
-                <h3 className={styles.optionsTitle}>Compression Quality</h3>
-                <div className={styles.qualityOptions}>
-                  {(['screen', 'ebook', 'printer', 'prepress'] as Quality[]).map((q) => (
-                    <label key={q} className={styles.radioLabel}>
-                      <input
-                        type="radio"
-                        name="quality"
-                        value={q}
-                        checked={quality === q}
-                        onChange={(e) => setQuality(e.target.value as Quality)}
-                        className={styles.radio}
-                      />
-                      <span className={styles.radioText}>
-                        {q.charAt(0).toUpperCase() + q.slice(1)}
-                      </span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {selectedTool === 'split' && files.length > 0 && (
-              <div className={styles.options}>
-                <h3 className={styles.optionsTitle}>Split Mode</h3>
-                <div className={styles.splitModeOptions}>
-                  <label className={styles.radioLabel}>
-                    <input
-                      type="radio"
-                      name="splitMode"
-                      value="all"
-                      checked={splitMode === 'all'}
-                      onChange={(e) => setSplitMode(e.target.value as 'all' | 'range')}
-                      className={styles.radio}
-                    />
-                    <span className={styles.radioText}>All Pages (Individual)</span>
-                  </label>
-                  <label className={styles.radioLabel}>
-                    <input
-                      type="radio"
-                      name="splitMode"
-                      value="range"
-                      checked={splitMode === 'range'}
-                      onChange={(e) => setSplitMode(e.target.value as 'all' | 'range')}
-                      className={styles.radio}
-                    />
-                    <span className={styles.radioText}>Custom Ranges</span>
-                  </label>
-                </div>
-
-                {splitMode === 'range' && (
-                  <div className={styles.rangeInputs}>
-                    {ranges.map((range, index) => (
-                      <div key={index} className={styles.rangeRow}>
-                        <input
-                          type="number"
-                          min="1"
-                          value={range.start}
-                          onChange={(e) => updateRange(index, 'start', parseInt(e.target.value))}
-                          className={styles.rangeInput}
-                          placeholder="Start"
-                        />
-                        <span className={styles.rangeSeparator}>to</span>
-                        <input
-                          type="number"
-                          min="1"
-                          value={range.end}
-                          onChange={(e) => updateRange(index, 'end', parseInt(e.target.value))}
-                          className={styles.rangeInput}
-                          placeholder="End"
-                        />
-                        {ranges.length > 1 && (
-                          <button
-                            onClick={() => removeRange(index)}
-                            className={styles.removeRangeButton}
-                            type="button"
-                          >
-                            ✕
-                          </button>
-                        )}
-                      </div>
-                    ))}
-                    <button onClick={addRange} className={styles.addRangeButton} type="button">
-                      + Add Range
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {error && <div className={`${styles.alert} ${styles.error}`}>{error}</div>}
-            {success && <div className={`${styles.alert} ${styles.success}`}>{success}</div>}
-
+        {/* Sidebar */}
+        <aside className={`${styles.sidebar} ${sidebarOpen ? styles.sidebarOpen : ''}`}>
+          <div className={styles.sidebarHeader}>
+            <div className={styles.sidebarLogo}>
+              <svg width="22" height="22" fill="none" stroke="#2563EB" viewBox="0 0 24 24" strokeWidth={1.75}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              <span className={styles.sidebarLogoText}>NextPDF</span>
+            </div>
             <button
-              onClick={
-                selectedTool === 'modify'
-                  ? handleOpenEditor
-                  : selectedTool === 'annotate'
-                  ? handleOpenAnnotator
-                  : handleProcess
-              }
-              disabled={loading || files.length === 0}
-              className={styles.processButton}
+              className={styles.sidebarClose}
+              onClick={() => setSidebarOpen(false)}
+              aria-label="Close menu"
             >
-              {loading ? (
-                <>
-                  <span className={styles.spinner}></span>
-                  Processing...
-                </>
-              ) : selectedTool === 'modify' ? (
-                <>
-                  <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                  </svg>
-                  Open Editor
-                </>
-              ) : selectedTool === 'annotate' ? (
-                <>
-                  <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                  </svg>
-                  Open Annotator
-                </>
-              ) : (
-                <>
-                  <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                  </svg>
-                  Process PDF
-                </>
-              )}
+              <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
             </button>
           </div>
-        )}
-      </main>
+
+          <nav className={styles.sidebarNav}>
+            {toolGroups.map((group) => (
+              <div key={group.label} className={styles.toolGroup}>
+                <p className={styles.toolGroupLabel}>{group.label}</p>
+                {group.tools.map((tool) => (
+                  <button
+                    key={tool}
+                    className={`${styles.sidebarToolButton} ${selectedTool === tool ? styles.sidebarToolActive : ''}`}
+                    onClick={() => handleToolChange(tool)}
+                  >
+                    <span className={styles.sidebarToolIcon}>{toolConfig[tool].icon}</span>
+                    <span className={styles.sidebarToolLabel}>{toolConfig[tool].label}</span>
+                  </button>
+                ))}
+              </div>
+            ))}
+          </nav>
+        </aside>
+
+        {/* Main content */}
+        <main className={styles.main}>
+          {showAnnotator && files.length > 0 ? (
+            <PDFAnnotator
+              file={files[0]}
+              onSave={handleAnnotatorSave}
+              onCancel={() => setShowAnnotator(false)}
+            />
+          ) : showEditor && files.length > 0 ? (
+            <PDFEditor
+              file={files[0]}
+              onSave={handleEditorSave}
+              onCancel={() => setShowEditor(false)}
+            />
+          ) : (
+            <div className={styles.content}>
+              <div className={styles.toolHeader}>
+                <div className={styles.toolHeaderIcon}>{cfg.icon}</div>
+                <div>
+                  <h2 className={styles.toolTitle}>{cfg.label}</h2>
+                  <p className={styles.toolDescription}>{cfg.description}</p>
+                </div>
+              </div>
+
+              <FileUpload
+                multiple={cfg.multiple}
+                onFilesSelected={handleFilesSelected}
+                accept={cfg.accept}
+                maxFiles={cfg.maxFiles}
+                fileTypeLabel={cfg.fileTypeLabel}
+              />
+
+              {selectedTool === 'compress' && files.length > 0 && (
+                <div className={styles.options}>
+                  <h3 className={styles.optionsTitle}>Compression Quality</h3>
+                  <div className={styles.qualityOptions}>
+                    {(['screen', 'ebook', 'printer', 'prepress'] as Quality[]).map((q) => (
+                      <label key={q} className={`${styles.radioLabel} ${quality === q ? styles.radioLabelActive : ''}`}>
+                        <input
+                          type="radio"
+                          name="quality"
+                          value={q}
+                          checked={quality === q}
+                          onChange={(e) => setQuality(e.target.value as Quality)}
+                          className={styles.radio}
+                        />
+                        <span className={styles.radioText}>
+                          {q.charAt(0).toUpperCase() + q.slice(1)}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {selectedTool === 'split' && files.length > 0 && (
+                <div className={styles.options}>
+                  <h3 className={styles.optionsTitle}>Split Mode</h3>
+                  <div className={styles.splitModeOptions}>
+                    <label className={`${styles.radioLabel} ${splitMode === 'all' ? styles.radioLabelActive : ''}`}>
+                      <input
+                        type="radio"
+                        name="splitMode"
+                        value="all"
+                        checked={splitMode === 'all'}
+                        onChange={(e) => setSplitMode(e.target.value as 'all' | 'range')}
+                        className={styles.radio}
+                      />
+                      <span className={styles.radioText}>All Pages (Individual)</span>
+                    </label>
+                    <label className={`${styles.radioLabel} ${splitMode === 'range' ? styles.radioLabelActive : ''}`}>
+                      <input
+                        type="radio"
+                        name="splitMode"
+                        value="range"
+                        checked={splitMode === 'range'}
+                        onChange={(e) => setSplitMode(e.target.value as 'all' | 'range')}
+                        className={styles.radio}
+                      />
+                      <span className={styles.radioText}>Custom Ranges</span>
+                    </label>
+                  </div>
+
+                  {splitMode === 'range' && (
+                    <div className={styles.rangeInputs}>
+                      {ranges.map((range, index) => (
+                        <div key={index} className={styles.rangeRow}>
+                          <input
+                            type="number"
+                            min="1"
+                            value={range.start}
+                            onChange={(e) => updateRange(index, 'start', parseInt(e.target.value))}
+                            className={styles.rangeInput}
+                            placeholder="Start"
+                          />
+                          <span className={styles.rangeSeparator}>to</span>
+                          <input
+                            type="number"
+                            min="1"
+                            value={range.end}
+                            onChange={(e) => updateRange(index, 'end', parseInt(e.target.value))}
+                            className={styles.rangeInput}
+                            placeholder="End"
+                          />
+                          {ranges.length > 1 && (
+                            <button
+                              onClick={() => removeRange(index)}
+                              className={styles.removeRangeButton}
+                              type="button"
+                            >
+                              ✕
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                      <button onClick={addRange} className={styles.addRangeButton} type="button">
+                        + Add Range
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {error && <div className={`${styles.alert} ${styles.alertError}`}>{error}</div>}
+              {success && <div className={`${styles.alert} ${styles.alertSuccess}`}>{success}</div>}
+
+              <button
+                onClick={getButtonAction()}
+                disabled={loading || files.length === 0}
+                className={`${styles.processButton} ${isConvertTool ? styles.processButtonConvert : ''}`}
+              >
+                {loading ? (
+                  <>
+                    <span className={styles.spinner} />
+                    Processing...
+                  </>
+                ) : (
+                  <>
+                    {selectedTool === 'modify' && (
+                      <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                      </svg>
+                    )}
+                    {selectedTool === 'annotate' && (
+                      <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                      </svg>
+                    )}
+                    {isConvertTool && (
+                      <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                      </svg>
+                    )}
+                    {selectedTool !== 'modify' && selectedTool !== 'annotate' && !isConvertTool && (
+                      <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                      </svg>
+                    )}
+                    {getButtonLabel()}
+                  </>
+                )}
+              </button>
+            </div>
+          )}
+        </main>
+      </div>
 
       {/* Footer */}
       <footer className={styles.footer}>

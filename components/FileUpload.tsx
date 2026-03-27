@@ -8,6 +8,7 @@ interface FileUploadProps {
   onFilesSelected: (files: File[]) => void;
   accept?: string;
   maxFiles?: number;
+  fileTypeLabel?: string;
 }
 
 export default function FileUpload({
@@ -15,6 +16,7 @@ export default function FileUpload({
   onFilesSelected,
   accept = '.pdf',
   maxFiles = 10,
+  fileTypeLabel,
 }: FileUploadProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
@@ -42,9 +44,7 @@ export default function FileUpload({
       e.stopPropagation();
       setIsDragging(false);
 
-      const files = Array.from(e.dataTransfer.files).filter(
-        (file) => file.type === 'application/pdf'
-      );
+      const files = Array.from(e.dataTransfer.files);
 
       if (files.length > maxFiles) {
         alert(`Maximum ${maxFiles} files allowed`);
@@ -116,7 +116,7 @@ export default function FileUpload({
             <span className={styles.highlight}>Click to upload</span> or drag and drop
           </p>
           <p className={styles.subtext}>
-            PDF files only{multiple ? ` · max ${maxFiles} files` : ''}
+            {fileTypeLabel ?? (multiple ? `PDF files · max ${maxFiles} files` : 'PDF files only')}
           </p>
         </label>
         <div className={styles.privacyNote}>
