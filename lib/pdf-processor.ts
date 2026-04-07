@@ -246,6 +246,148 @@ export async function modifyPDF(
   await fs.writeFile(outputPath, modifiedPdfBytes);
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Merge with per-file page ranges
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Parse a page-range string into a sorted array of 0-indexed page indices.
+ *
+ * Supported formats (1-indexed input):
+ *   ""        → all pages
+ *   "1-3"     → pages 1, 2, 3
+ *   "2,4,6"   → pages 2, 4, 6
+ *   "1-3,5,7-9" → pages 1,2,3,5,7,8,9
+ */
+export function parsePageRange(range: string, totalPages: number): number[] {
+  const trimmed = range.trim();
+
+  if (!trimmed) {
+    return Array.from({ length: totalPages }, (_, i) => i);
+  }
+
+  const pages = new Set<number>();
+
+  for (const segment of trimmed.split(',')) {
+    const part = segment.trim();
+
+    if (part.includes('-')) {
+      const [rawStart, rawEnd] = part.split('-');
+      const start = parseInt(rawStart, 10) - 1; // convert to 0-indexed
+      const end = parseInt(rawEnd, 10) - 1;
+
+      if (!isNaN(start) && !isNaN(end)) {
+        for (let i = Math.max(0, start); i <= Math.min(totalPages - 1, end); i++) {
+          pages.add(i);
+        }
+      }
+    } else {
+      const page = parseInt(part, 10) - 1;
+      if (!isNaN(page) && page >= 0 && page < totalPages) {
+        pages.add(page);
+      }
+    }
+  }
+
+  return Array.from(pages).sort((a, b) => a - b);
+}
+
+/**
+ * Merge multiple PDF files into one, with optional per-file page ranges.
+ * Files are merged in the order supplied by inputPaths.
+ *
+ * @param pageRanges - One range string per input file (empty string = all pages).
+ */
+export async function mergePDFsWithRanges(
+  inputPaths: string[],
+  outputPath: string,
+  pageRanges: string[] = [],
+): Promise<void> {
+  const mergedPdf = await PDFDocument.create();
+
+  for (let idx = 0; idx < inputPaths.length; idx++) {
+    const pdfBytes = await fs.readFile(inputPaths[idx]);
+    const pdf = await PDFDocument.load(pdfBytes);
+    const totalPages = pdf.getPageCount();
+    const range = pageRanges[idx] ?? '';
+    const pageIndices = parsePageRange(range, totalPages);
+    const copiedPages = await mergedPdf.copyPages(pdf, pageIndices);
+    copiedPages.forEach((page) => mergedPdf.addPage(page));
+  }
+
+  const mergedPdfBytes = await mergedPdf.save();
+  await fs.writeFile(outputPath, mergedPdfBytes);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PDF complexity analysis (used for PDF → Word conversion quality estimation)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type ConversionQualityLabel = 'excellent' | 'good' | 'fair' | 'poor';
+
+export interface PDFComplexityResult {
+  pageCount: number;
+  fileSizeBytes: number;
+  bytesPerPage: number;
+  estimatedScore: number; // 0–100
+  qualityLabel: ConversionQualityLabel;
+  notes: string;
+}
+
+/**
+ * Estimate PDF-to-Word conversion quality by analysing bytes-per-page.
+ *
+ * Heuristic:
+ *  < 30 KB/page  → text-heavy   → 92 %  (excellent)
+ *  30–100 KB/page → light images → 74 %  (good)
+ *  100–400 KB/page → heavy images → 46 % (fair)
+ *  > 400 KB/page  → image-only   → 22 %  (poor)
+ */
+export async function analyzePDFComplexity(inputPath: string): Promise<PDFComplexityResult> {
+  const pdfBytes = await fs.readFile(inputPath);
+  const pdf = await PDFDocument.load(pdfBytes);
+
+  const pageCount = pdf.getPageCount();
+  const fileSizeBytes = pdfBytes.length;
+  const bytesPerPage = pageCount > 0 ? Math.round(fileSizeBytes / pageCount) : fileSizeBytes;
+
+  const KB = 1024;
+
+  if (bytesPerPage < 30 * KB) {
+    return {
+      pageCount, fileSizeBytes, bytesPerPage,
+      estimatedScore: 92,
+      qualityLabel: 'excellent',
+      notes: 'Text-heavy document with minimal images. Excellent conversion expected.',
+    };
+  }
+
+  if (bytesPerPage < 100 * KB) {
+    return {
+      pageCount, fileSizeBytes, bytesPerPage,
+      estimatedScore: 74,
+      qualityLabel: 'good',
+      notes: 'Moderate image content detected. Good conversion quality expected.',
+    };
+  }
+
+  if (bytesPerPage < 400 * KB) {
+    return {
+      pageCount, fileSizeBytes, bytesPerPage,
+      estimatedScore: 46,
+      qualityLabel: 'fair',
+      notes: 'High image content detected. Some text may be incomplete in the output.',
+    };
+  }
+
+  return {
+    pageCount, fileSizeBytes, bytesPerPage,
+    estimatedScore: 22,
+    qualityLabel: 'poor',
+    notes: 'Image-heavy document. Conversion quality will be significantly limited.',
+  };
+}
+
 /**
  * Get PDF metadata
  */

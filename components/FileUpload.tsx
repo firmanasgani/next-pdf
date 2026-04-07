@@ -9,6 +9,7 @@ interface FileUploadProps {
   accept?: string;
   maxFiles?: number;
   fileTypeLabel?: string;
+  showFileList?: boolean;
 }
 
 export default function FileUpload({
@@ -17,6 +18,7 @@ export default function FileUpload({
   accept = '.pdf',
   maxFiles = 10,
   fileTypeLabel,
+  showFileList = true,
 }: FileUploadProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
@@ -127,7 +129,7 @@ export default function FileUpload({
         </div>
       </div>
 
-      {selectedFiles.length > 0 && (
+      {showFileList && selectedFiles.length > 0 && (
         <div className={styles.fileList}>
           <h3 className={styles.fileListTitle}>Selected Files:</h3>
           {selectedFiles.map((file, index) => (

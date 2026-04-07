@@ -1,9 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import FileUpload from '@/components/FileUpload';
+import MergeFileOrganizer, { MergeFileEntry } from '@/components/MergeFileOrganizer';
 import SupportBanner from '@/components/SupportBanner';
 import styles from './page.module.css';
 
@@ -17,17 +18,24 @@ const PDFAnnotator = dynamic(() => import('@/components/PDFAnnotator'), {
   loading: () => <div className={styles.loading}>Loading PDF Annotator...</div>,
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Types
+// ─────────────────────────────────────────────────────────────────────────────
+
 type Tool =
   | 'merge'
   | 'compress'
   | 'split'
   | 'modify'
   | 'annotate'
+  | 'pdf-to-word'
   | 'word-to-pdf'
   | 'image-to-pdf'
   | 'ppt-to-pdf';
 
 type Quality = 'screen' | 'ebook' | 'printer' | 'prepress';
+
+type ConversionQuality = 'excellent' | 'good' | 'fair' | 'poor';
 
 interface ToolConfig {
   label: string;
@@ -38,6 +46,10 @@ interface ToolConfig {
   maxFiles: number;
   fileTypeLabel: string;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Tool configuration
+// ─────────────────────────────────────────────────────────────────────────────
 
 const toolConfig: Record<Tool, ToolConfig> = {
   merge: {
@@ -105,6 +117,19 @@ const toolConfig: Record<Tool, ToolConfig> = {
       </svg>
     ),
   },
+  'pdf-to-word': {
+    label: 'PDF → Word',
+    description: 'Export PDF as an editable Word document (.docx)',
+    accept: '.pdf',
+    multiple: false,
+    maxFiles: 1,
+    fileTypeLabel: 'PDF files only',
+    icon: (
+      <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.75}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+      </svg>
+    ),
+  },
   'word-to-pdf': {
     label: 'Word → PDF',
     description: 'Convert Word documents (.doc, .docx) to PDF',
@@ -152,10 +177,29 @@ const toolGroups: { label: string; tools: Tool[] }[] = [
     tools: ['merge', 'compress', 'split', 'modify', 'annotate'],
   },
   {
+    label: 'Export PDF',
+    tools: ['pdf-to-word'],
+  },
+  {
     label: 'Convert to PDF',
     tools: ['word-to-pdf', 'image-to-pdf', 'ppt-to-pdf'],
   },
 ];
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Quality-score badge helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+const qualityMeta: Record<ConversionQuality, { color: string; bg: string; border: string; label: string }> = {
+  excellent: { color: '#065F46', bg: '#D1FAE5', border: '#6EE7B7', label: 'Excellent' },
+  good:      { color: '#1E40AF', bg: '#DBEAFE', border: '#93C5FD', label: 'Good' },
+  fair:      { color: '#92400E', bg: '#FEF3C7', border: '#FCD34D', label: 'Fair' },
+  poor:      { color: '#991B1B', bg: '#FEE2E2', border: '#FCA5A5', label: 'Poor' },
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Component
+// ─────────────────────────────────────────────────────────────────────────────
 
 export default function Home() {
   const [selectedTool, setSelectedTool] = useState<Tool>('merge');
@@ -167,18 +211,105 @@ export default function Home() {
   const [showAnnotator, setShowAnnotator] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
+  // Compress options
   const [quality, setQuality] = useState<Quality>('ebook');
+
+  // Split options
   const [splitMode, setSplitMode] = useState<'all' | 'range'>('all');
   const [ranges, setRanges] = useState<{ start: number; end: number }[]>([{ start: 1, end: 1 }]);
 
-  const handleFilesSelected = (selectedFiles: File[]) => {
+  // Merge file ordering + page ranges
+  const [mergeEntries, setMergeEntries] = useState<MergeFileEntry[]>([]);
+
+  // PDF → Word conversion quality result
+  const [conversionScore, setConversionScore] = useState<number | null>(null);
+  const [conversionQuality, setConversionQuality] = useState<ConversionQuality | null>(null);
+  const [conversionNotes, setConversionNotes] = useState<string>('');
+
+  // ── File selection ─────────────────────────────────────────────────────────
+
+  const handleFilesSelected = useCallback((selectedFiles: File[]) => {
     setFiles(selectedFiles);
     setError(null);
     setSuccess(null);
+    setConversionScore(null);
+    setConversionQuality(null);
+    setConversionNotes('');
+
+    if (selectedTool === 'merge') {
+      setMergeEntries(
+        selectedFiles.map((file, i) => ({
+          id: `${file.name}-${file.size}-${i}-${Date.now()}`,
+          file,
+          pageRange: '',
+        })),
+      );
+    }
+  }, [selectedTool]);
+
+  // ── Download helper ────────────────────────────────────────────────────────
+
+  const downloadBlob = (blob: Blob, filename: string) => {
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
   };
 
+  // ── Generic request handler ────────────────────────────────────────────────
+
+  const processRequest = async (url: string, formData: FormData, filename: string) => {
+    const response = await fetch(url, { method: 'POST', body: formData });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || 'Processing failed');
+    }
+
+    const blob = await response.blob();
+    downloadBlob(blob, filename);
+    setSuccess('File processed successfully!');
+    setFiles([]);
+  };
+
+  // ── PDF → Word handler (reads custom response headers) ────────────────────
+
+  const processPdfToWord = async () => {
+    const formData = new FormData();
+    formData.append('file', files[0]);
+
+    const response = await fetch('/api/pdf-to-word', { method: 'POST', body: formData });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || 'Conversion failed');
+    }
+
+    const score = parseInt(response.headers.get('X-Conversion-Score') ?? '0', 10);
+    const quality = (response.headers.get('X-Conversion-Quality') ?? 'fair') as ConversionQuality;
+    const notes = response.headers.get('X-Conversion-Notes') ?? '';
+
+    const blob = await response.blob();
+    const outputName = files[0].name.replace(/\.pdf$/i, '.docx');
+    downloadBlob(blob, outputName);
+
+    setConversionScore(score);
+    setConversionQuality(quality);
+    setConversionNotes(notes);
+    setSuccess('Export successful!');
+    setFiles([]);
+  };
+
+  // ── Main process dispatcher ────────────────────────────────────────────────
+
   const handleProcess = async () => {
-    if (files.length === 0) {
+    const activeFiles = selectedTool === 'merge' ? mergeEntries.map((e) => e.file) : files;
+
+    if (activeFiles.length === 0) {
       setError('Please select at least one file');
       return;
     }
@@ -186,13 +317,18 @@ export default function Home() {
     setLoading(true);
     setError(null);
     setSuccess(null);
+    setConversionScore(null);
+    setConversionQuality(null);
+    setConversionNotes('');
 
     try {
       const formData = new FormData();
 
       if (selectedTool === 'merge') {
-        files.forEach((file) => formData.append('files', file));
+        mergeEntries.forEach((entry) => formData.append('files', entry.file));
+        formData.append('pageRanges', JSON.stringify(mergeEntries.map((e) => e.pageRange)));
         await processRequest('/api/merge', formData, 'merged.pdf');
+        setMergeEntries([]);
       } else if (selectedTool === 'compress') {
         formData.append('file', files[0]);
         formData.append('quality', quality);
@@ -202,6 +338,8 @@ export default function Home() {
         formData.append('mode', splitMode);
         if (splitMode === 'range') formData.append('ranges', JSON.stringify(ranges));
         await processRequest('/api/split', formData, splitMode === 'all' ? 'split_pdfs.zip' : 'split.pdf');
+      } else if (selectedTool === 'pdf-to-word') {
+        await processPdfToWord();
       } else if (selectedTool === 'word-to-pdf') {
         formData.append('file', files[0]);
         await processRequest('/api/word-to-pdf', formData, files[0].name.replace(/\.[^.]+$/, '.pdf'));
@@ -219,35 +357,7 @@ export default function Home() {
     }
   };
 
-  const processRequest = async (url: string, formData: FormData, filename: string) => {
-    const response = await fetch(url, { method: 'POST', body: formData });
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.error || 'Processing failed');
-    }
-
-    const blob = await response.blob();
-    const downloadUrl = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = downloadUrl;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    window.URL.revokeObjectURL(downloadUrl);
-    document.body.removeChild(a);
-
-    setSuccess('File processed successfully!');
-    setFiles([]);
-  };
-
-  const addRange = () => setRanges([...ranges, { start: 1, end: 1 }]);
-  const removeRange = (index: number) => setRanges(ranges.filter((_, i) => i !== index));
-  const updateRange = (index: number, field: 'start' | 'end', value: number) => {
-    const newRanges = [...ranges];
-    newRanges[index][field] = value;
-    setRanges(newRanges);
-  };
+  // ── Editor / annotator ─────────────────────────────────────────────────────
 
   const handleEditorSave = async (operations: {
     pagesToDelete: number[];
@@ -286,37 +396,53 @@ export default function Home() {
 
   const handleAnnotatorSave = (blob: Blob) => {
     setShowAnnotator(false);
-    const downloadUrl = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = downloadUrl;
-    a.download = `annotated_${files[0]?.name ?? 'document.pdf'}`;
-    document.body.appendChild(a);
-    a.click();
-    window.URL.revokeObjectURL(downloadUrl);
-    document.body.removeChild(a);
+    downloadBlob(blob, `annotated_${files[0]?.name ?? 'document.pdf'}`);
     setSuccess('PDF berhasil disimpan dengan anotasi!');
     setFiles([]);
   };
 
+  // ── Tool switching ─────────────────────────────────────────────────────────
+
   const handleToolChange = (tool: Tool) => {
     setSelectedTool(tool);
     setFiles([]);
+    setMergeEntries([]);
     setError(null);
     setSuccess(null);
+    setConversionScore(null);
+    setConversionQuality(null);
+    setConversionNotes('');
     setShowEditor(false);
     setShowAnnotator(false);
     setSidebarOpen(false);
   };
 
-  const cfg = toolConfig[selectedTool];
+  // ── Split helpers ──────────────────────────────────────────────────────────
 
-  const isConvertTool = ['word-to-pdf', 'image-to-pdf', 'ppt-to-pdf'].includes(selectedTool);
+  const addRange = () => setRanges([...ranges, { start: 1, end: 1 }]);
+  const removeRange = (index: number) => setRanges(ranges.filter((_, i) => i !== index));
+  const updateRange = (index: number, field: 'start' | 'end', value: number) => {
+    const newRanges = [...ranges];
+    newRanges[index][field] = value;
+    setRanges(newRanges);
+  };
+
+  // ── Derived state ──────────────────────────────────────────────────────────
+
+  const cfg = toolConfig[selectedTool];
+  const isConvertToPdf = ['word-to-pdf', 'image-to-pdf', 'ppt-to-pdf'].includes(selectedTool);
+  const isExportTool = selectedTool === 'pdf-to-word';
+
+  const isDisabled =
+    loading ||
+    (selectedTool === 'merge' ? mergeEntries.length === 0 : files.length === 0);
 
   const getButtonLabel = () => {
     if (loading) return null;
     if (selectedTool === 'modify') return 'Open Editor';
     if (selectedTool === 'annotate') return 'Open Annotator';
-    if (isConvertTool) return 'Convert to PDF';
+    if (isExportTool) return 'Export to Word';
+    if (isConvertToPdf) return 'Convert to PDF';
     return 'Process PDF';
   };
 
@@ -326,9 +452,13 @@ export default function Home() {
     return handleProcess;
   };
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // Render
+  // ─────────────────────────────────────────────────────────────────────────
+
   return (
     <div className={styles.container}>
-      {/* Navbar */}
+      {/* ── Navbar ─────────────────────────────────────────────────────────── */}
       <nav className={styles.navbar}>
         <button
           className={styles.hamburger}
@@ -353,14 +483,10 @@ export default function Home() {
         </div>
       </nav>
 
-      {/* Body */}
+      {/* ── Body ───────────────────────────────────────────────────────────── */}
       <div className={styles.body}>
-        {/* Sidebar overlay (mobile) */}
         {sidebarOpen && (
-          <div
-            className={styles.overlay}
-            onClick={() => setSidebarOpen(false)}
-          />
+          <div className={styles.overlay} onClick={() => setSidebarOpen(false)} />
         )}
 
         {/* Sidebar */}
@@ -402,7 +528,7 @@ export default function Home() {
           </nav>
         </aside>
 
-        {/* Main content */}
+        {/* ── Main content ──────────────────────────────────────────────────── */}
         <main className={styles.main}>
           {showAnnotator && files.length > 0 ? (
             <PDFAnnotator
@@ -418,6 +544,7 @@ export default function Home() {
             />
           ) : (
             <div className={styles.content}>
+              {/* Tool header */}
               <div className={styles.toolHeader}>
                 <div className={styles.toolHeaderIcon}>{cfg.icon}</div>
                 <div>
@@ -426,14 +553,25 @@ export default function Home() {
                 </div>
               </div>
 
+              {/* File upload zone */}
               <FileUpload
                 multiple={cfg.multiple}
                 onFilesSelected={handleFilesSelected}
                 accept={cfg.accept}
                 maxFiles={cfg.maxFiles}
                 fileTypeLabel={cfg.fileTypeLabel}
+                showFileList={selectedTool !== 'merge'}
               />
 
+              {/* ── Merge: file organizer (order + page ranges) ──────────── */}
+              {selectedTool === 'merge' && mergeEntries.length > 0 && (
+                <MergeFileOrganizer
+                  entries={mergeEntries}
+                  onChange={setMergeEntries}
+                />
+              )}
+
+              {/* ── Compress: quality selector ───────────────────────────── */}
               {selectedTool === 'compress' && files.length > 0 && (
                 <div className={styles.options}>
                   <h3 className={styles.optionsTitle}>Compression Quality</h3>
@@ -457,6 +595,7 @@ export default function Home() {
                 </div>
               )}
 
+              {/* ── Split: mode + range inputs ───────────────────────────── */}
               {selectedTool === 'split' && files.length > 0 && (
                 <div className={styles.options}>
                   <h3 className={styles.optionsTitle}>Split Mode</h3>
@@ -525,13 +664,26 @@ export default function Home() {
                 </div>
               )}
 
-              {error && <div className={`${styles.alert} ${styles.alertError}`}>{error}</div>}
-              {success && <div className={`${styles.alert} ${styles.alertSuccess}`}>{success}</div>}
+              {/* ── PDF → Word: conversion quality result ───────────────── */}
+              {selectedTool === 'pdf-to-word' && conversionScore !== null && conversionQuality && (
+                <ConversionQualityCard
+                  score={conversionScore}
+                  quality={conversionQuality}
+                  notes={conversionNotes}
+                />
+              )}
 
+              {/* Alerts */}
+              {error && <div className={`${styles.alert} ${styles.alertError}`}>{error}</div>}
+              {success && !conversionScore && (
+                <div className={`${styles.alert} ${styles.alertSuccess}`}>{success}</div>
+              )}
+
+              {/* Action button */}
               <button
                 onClick={getButtonAction()}
-                disabled={loading || files.length === 0}
-                className={`${styles.processButton} ${isConvertTool ? styles.processButtonConvert : ''}`}
+                disabled={isDisabled}
+                className={`${styles.processButton} ${isConvertToPdf ? styles.processButtonConvert : ''} ${isExportTool ? styles.processButtonExport : ''}`}
               >
                 {loading ? (
                   <>
@@ -550,12 +702,17 @@ export default function Home() {
                         <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
                       </svg>
                     )}
-                    {isConvertTool && (
+                    {isConvertToPdf && (
                       <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
                       </svg>
                     )}
-                    {selectedTool !== 'modify' && selectedTool !== 'annotate' && !isConvertTool && (
+                    {isExportTool && (
+                      <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                      </svg>
+                    )}
+                    {selectedTool !== 'modify' && selectedTool !== 'annotate' && !isConvertToPdf && !isExportTool && (
                       <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                       </svg>
@@ -569,7 +726,7 @@ export default function Home() {
         </main>
       </div>
 
-      {/* Footer */}
+      {/* ── Footer ─────────────────────────────────────────────────────────── */}
       <footer className={styles.footer}>
         <nav className={styles.footerLinks}>
           <Link href="/privacy-policy" className={styles.footerLink}>Privacy Policy</Link>
@@ -587,6 +744,60 @@ export default function Home() {
       </footer>
 
       <SupportBanner />
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ConversionQualityCard — shows PDF → Word quality estimate after export
+// ─────────────────────────────────────────────────────────────────────────────
+
+function ConversionQualityCard({
+  score,
+  quality,
+  notes,
+}: {
+  score: number;
+  quality: ConversionQuality;
+  notes: string;
+}) {
+  const meta = qualityMeta[quality];
+
+  return (
+    <div className={styles.qualityCard}>
+      <div className={styles.qualityCardHeader}>
+        <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+        </svg>
+        <span className={styles.qualityCardTitle}>Conversion Quality Estimate</span>
+        <span
+          className={styles.qualityBadge}
+          style={{ color: meta.color, background: meta.bg, borderColor: meta.border }}
+        >
+          {meta.label}
+        </span>
+      </div>
+
+      {/* Score bar */}
+      <div className={styles.scoreBar}>
+        <div className={styles.scoreBarTrack}>
+          <div
+            className={styles.scoreBarFill}
+            style={{
+              width: `${score}%`,
+              background: score >= 75 ? '#10B981' : score >= 50 ? '#F59E0B' : '#EF4444',
+            }}
+          />
+        </div>
+        <span className={styles.scoreValue}>{score}%</span>
+      </div>
+
+      <p className={styles.qualityNotes}>{notes}</p>
+
+      <p className={styles.qualityDisclaimer}>
+        Estimate is based on image density. Text-heavy PDFs convert with high fidelity;
+        scanned or image-only PDFs may require post-edit in Word.
+      </p>
     </div>
   );
 }
