@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { exec } from "child_process";
 import { promisify } from "util";
-import { writeFile, readFile, mkdir, rm } from "fs/promises";
+import { writeFile, readFile, mkdir, rm, stat } from "fs/promises";
 import { join, basename } from "path";
 import { tmpdir } from "os";
 import { v4 as uuidv4 } from "uuid";
@@ -10,6 +10,9 @@ import { analyzePDFComplexity } from "@/lib/pdf-processor";
 import { checkRateLimit, getClientIP } from "@/lib/rate-limiter";
 
 const execAsync = promisify(exec);
+
+// LibreOffice can be slow on first run — give it up to 90 seconds
+const LIBREOFFICE_TIMEOUT_MS = 90_000;
 
 export async function POST(request: NextRequest) {
   const clientIP = getClientIP(request);
@@ -43,17 +46,43 @@ export async function POST(request: NextRequest) {
     const inputPath = join(sessionDir, "input.pdf");
     await writeFile(inputPath, new Uint8Array(await file.arrayBuffer()));
 
-    // Analyse complexity before conversion so we can return the score
+    // Analyse complexity so we can return an estimated quality score
     const analysis = await analyzePDFComplexity(inputPath);
 
-    // Convert PDF → DOCX via LibreOffice
-    // The "writer_pdf_import" filter tells LibreOffice to open the PDF
-    // in Writer mode (text-aware import) rather than as an image.
+    // ── Convert PDF → DOCX via LibreOffice ───────────────────────────────────
+    //
+    // NOTE: Do NOT pass --infilter here. The "writer_pdf_import" infilter is
+    // designed for the GUI and is incompatible with headless --convert-to mode
+    // — it causes LibreOffice to emit an empty document without an error code.
+    //
+    // Without --infilter, LibreOffice uses its built-in Draw/PDF import which
+    // correctly embeds text and vector shapes, producing a non-empty .docx.
+    //
     await execAsync(
-      `soffice --headless --infilter="writer_pdf_import" --convert-to docx --outdir "${sessionDir}" "${inputPath}"`,
+      `soffice --headless --convert-to docx --outdir "${sessionDir}" "${inputPath}"`,
+      { timeout: LIBREOFFICE_TIMEOUT_MS },
     );
 
     const outputPath = join(sessionDir, "input.docx");
+
+    // Guard: make sure LibreOffice actually produced a non-empty file
+    let outputStat;
+    try {
+      outputStat = await stat(outputPath);
+    } catch {
+      throw new Error(
+        "LibreOffice did not produce an output file. " +
+        "The PDF may be corrupted, password-protected, or LibreOffice is not installed.",
+      );
+    }
+
+    if (outputStat.size === 0) {
+      throw new Error(
+        "LibreOffice produced an empty file. " +
+        "The PDF may be password-protected or contain no extractable content.",
+      );
+    }
+
     const docxBytes = await readFile(outputPath);
     const outputName = basename(file.name, ".pdf") + ".docx";
 
@@ -63,23 +92,22 @@ export async function POST(request: NextRequest) {
         "Content-Type":
           "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         "Content-Disposition": `attachment; filename="${outputName}"`,
-        // Expose conversion quality metadata to the client
         "X-Conversion-Score": analysis.estimatedScore.toString(),
         "X-Conversion-Quality": analysis.qualityLabel,
         "X-Conversion-Notes": analysis.notes,
         "X-RateLimit-Remaining": rateLimit.remaining.toString(),
-        // Required so the browser can read custom headers in fetch()
         "Access-Control-Expose-Headers":
           "X-Conversion-Score, X-Conversion-Quality, X-Conversion-Notes",
       },
     });
   } catch (error) {
     console.error("PDF to Word error:", error);
+
+    const message =
+      error instanceof Error ? error.message : "Unknown error occurred.";
+
     return NextResponse.json(
-      {
-        error:
-          "Conversion failed. Make sure LibreOffice is installed on the server.",
-      },
+      { error: `Conversion failed: ${message}` },
       { status: 500 },
     );
   } finally {
