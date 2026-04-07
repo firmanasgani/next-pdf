@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { exec } from "child_process";
 import { promisify } from "util";
 import { writeFile, readFile, mkdir, rm, stat, readdir } from "fs/promises";
-import { join, basename } from "path";
+import { join, basename, extname } from "path";
 import { tmpdir } from "os";
 import { v4 as uuidv4 } from "uuid";
 import { validatePDFFiles } from "@/lib/file-validator";
@@ -11,10 +11,10 @@ import { checkRateLimit, getClientIP } from "@/lib/rate-limiter";
 
 const execAsync = promisify(exec);
 
-const LIBREOFFICE_TIMEOUT_MS = 120_000;
+// LibreOffice can be slow on cold start; allow enough headroom per step.
+const LIBREOFFICE_TIMEOUT_MS = 90_000;
 
-// ── Detect the LibreOffice executable name ────────────────────────────────────
-// Windows may expose it as "soffice.exe"; Linux/Mac as "soffice" or "libreoffice".
+// ── Detect the LibreOffice executable ─────────────────────────────────────────
 async function findSoffice(): Promise<string> {
   for (const cmd of ["soffice", "libreoffice", "soffice.exe"]) {
     try {
@@ -26,23 +26,38 @@ async function findSoffice(): Promise<string> {
   }
   throw new Error(
     "LibreOffice is not installed or not in PATH. " +
-    "Please install LibreOffice on the server."
+      "Please install LibreOffice on the server.",
   );
 }
 
-// ── Find the .docx output LibreOffice produced ────────────────────────────────
-// LibreOffice names the output after the input file. We scan the directory
-// in case the basename is slightly different from what we expect.
-async function findDocxOutput(dir: string): Promise<string> {
+// ── Run one headless conversion step ──────────────────────────────────────────
+async function runConvert(
+  soffice: string,
+  format: string,
+  outDir: string,
+  inputFile: string,
+): Promise<void> {
+  const { stderr } = await execAsync(
+    // --norestore       : skip crash-recovery dialog (critical on servers)
+    // --nofirststartwizard : skip first-run wizard
+    `"${soffice}" --headless --norestore --nofirststartwizard --convert-to ${format} --outdir "${outDir}" "${inputFile}"`,
+    { timeout: LIBREOFFICE_TIMEOUT_MS },
+  );
+
+  if (stderr) console.warn(`[pdf-to-word] LibreOffice (${format}) stderr:`, stderr);
+}
+
+// ── Find a file by extension in a directory ────────────────────────────────────
+async function findByExt(dir: string, ext: string): Promise<string> {
   const files = await readdir(dir);
-  const docx = files.find((f) => f.toLowerCase().endsWith(".docx"));
-  if (!docx) {
+  const found = files.find((f) => f.toLowerCase().endsWith(ext));
+  if (!found) {
     throw new Error(
-      "LibreOffice ran but produced no .docx file. " +
-      `Files in session dir: [${files.join(", ")}]`
+      `LibreOffice produced no ${ext} file. ` +
+        `Files in session dir: [${files.join(", ")}]`,
     );
   }
-  return join(dir, docx);
+  return join(dir, found);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -75,51 +90,48 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: validation.error }, { status: 400 });
     }
 
-    // Save input — use original filename so LibreOffice output is predictable
+    // Use the original filename so LibreOffice output names are predictable.
     const safeName = file.name.replace(/[^\w.\-]/g, "_");
     const inputPath = join(sessionDir, safeName);
     await writeFile(inputPath, new Uint8Array(await file.arrayBuffer()));
 
-    // Analyse complexity for quality score
+    // Analyse complexity for quality score (runs before conversion).
     const analysis = await analyzePDFComplexity(inputPath);
 
-    // ── Verify LibreOffice is available ──────────────────────────────────────
+    // Verify LibreOffice is available.
     const soffice = await findSoffice();
 
-    // ── Run conversion ───────────────────────────────────────────────────────
+    // ── Two-step conversion: PDF → ODT → DOCX ────────────────────────────────
     //
-    // Flags explained:
-    //   --headless        : no GUI
-    //   --norestore       : skip session-restore dialog (critical on servers)
-    //   --nofirststartwizard : skip first-run wizard
-    //   --convert-to docx : target format
-    //   --outdir          : where to place the output file
+    // Why two steps?
+    //   LibreOffice's PDF import module can write to its native ODT format
+    //   (step 1) but does not expose a direct DOCX export filter when the
+    //   source is a PDF (hence the "no export filter for .docx" error in a
+    //   single-step approach).
     //
-    // NOTE: --infilter is intentionally omitted. It is designed for GUI mode
-    // and causes LibreOffice to emit an empty document in headless --convert-to
-    // mode without raising an error.
+    //   Converting ODT → DOCX (step 2) is a standard LibreOffice operation
+    //   that is always available on any complete installation.
     //
-    const { stdout, stderr } = await execAsync(
-      `"${soffice}" --headless --norestore --nofirststartwizard --convert-to docx --outdir "${sessionDir}" "${inputPath}"`,
-      { timeout: LIBREOFFICE_TIMEOUT_MS },
-    );
 
-    if (stderr) console.warn("[pdf-to-word] LibreOffice stderr:", stderr);
-    if (stdout) console.log("[pdf-to-word] LibreOffice stdout:", stdout);
+    // Step 1: PDF → ODT
+    await runConvert(soffice, "odt", sessionDir, inputPath);
+    const odtPath = await findByExt(sessionDir, ".odt");
 
-    // ── Find and validate output ─────────────────────────────────────────────
-    const outputPath = await findDocxOutput(sessionDir);
+    // Step 2: ODT → DOCX
+    await runConvert(soffice, "docx", sessionDir, odtPath);
+    const docxPath = await findByExt(sessionDir, ".docx");
 
-    const outputStat = await stat(outputPath);
-    if (outputStat.size === 0) {
+    // Guard: ensure the output is not empty.
+    const { size } = await stat(docxPath);
+    if (size === 0) {
       throw new Error(
-        "LibreOffice produced an empty .docx. " +
-        "The PDF may be password-protected or contain no extractable content."
+        "LibreOffice produced an empty .docx file. " +
+          "The PDF may be password-protected or contain no extractable content.",
       );
     }
 
-    const docxBytes = await readFile(outputPath);
-    const outputName = basename(file.name, ".pdf") + ".docx";
+    const docxBytes = await readFile(docxPath);
+    const outputName = basename(file.name, extname(file.name)) + ".docx";
 
     return new NextResponse(docxBytes, {
       status: 200,
