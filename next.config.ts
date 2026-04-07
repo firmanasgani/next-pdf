@@ -15,14 +15,7 @@ const nextConfig = {
     },
   },
 
-  // Webpack configuration for handling binary files
-  webpack: (config: any, { isServer }: { isServer: boolean }) => {
-    if (isServer) {
-      // Ensure temp directory is created on server start
-      import("./lib/cleanup-service");
-    }
-    return config;
-  },
+  // Cleanup service is bootstrapped via instrumentation.ts, not here.
 };
 
 export default nextConfig;
