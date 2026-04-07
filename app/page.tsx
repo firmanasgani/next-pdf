@@ -5,6 +5,7 @@ import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import FileUpload from '@/components/FileUpload';
 import MergeFileOrganizer, { MergeFileEntry } from '@/components/MergeFileOrganizer';
+import WhatsNewModal from '@/components/WhatsNewModal';
 import SupportBanner from '@/components/SupportBanner';
 import styles from './page.module.css';
 
@@ -744,6 +745,7 @@ export default function Home() {
       </footer>
 
       <SupportBanner />
+      <WhatsNewModal />
     </div>
   );
 }
