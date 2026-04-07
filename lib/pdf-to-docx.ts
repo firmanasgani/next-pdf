@@ -8,13 +8,23 @@
  * This runs entirely in Node.js — no Java, no LibreOffice export filters needed.
  */
 
-import { getDocument, GlobalWorkerOptions } from "pdfjs-dist";
 import archiver from "archiver";
 import { Writable } from "stream";
+import type * as PdfjsLib from "pdfjs-dist";
 
-// Disable the Web Worker — not available in Node.js.
-// pdfjs-dist v4+ gracefully falls back to the main thread when workerSrc is empty.
-GlobalWorkerOptions.workerSrc = "";
+// pdfjs-dist is loaded at runtime via the legacy build (Node.js compatible).
+// The main build requires browser APIs (DOMMatrix, etc.) which are absent in Node.js.
+// Loaded lazily inside the function so Next.js never tries to bundle it at build time.
+async function getPdfjs(): Promise<typeof PdfjsLib> {
+  const lib = await import(
+    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+    // @ts-ignore – no type declarations at this sub-path; we cast below
+    "pdfjs-dist/legacy/build/pdf.mjs"
+  );
+  // Disable Web Worker — not available in Node.js
+  (lib as typeof PdfjsLib).GlobalWorkerOptions.workerSrc = "";
+  return lib as typeof PdfjsLib;
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Text extraction
@@ -80,6 +90,8 @@ function reconstructPageText(items: RawTextItem[]): string {
  * Returns one string per page.
  */
 export async function extractPagesFromPDF(pdfBuffer: Buffer): Promise<string[]> {
+  const { getDocument } = await getPdfjs();
+
   const pdf = await getDocument({
     data: new Uint8Array(pdfBuffer),
     useWorkerFetch: false,
