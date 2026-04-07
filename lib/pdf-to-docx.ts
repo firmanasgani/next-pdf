@@ -51,8 +51,14 @@ async function getPdfjs(): Promise<typeof PdfjsLib> {
     // @ts-ignore – no type declarations at this sub-path; we cast below
     "pdfjs-dist/legacy/build/pdf.mjs"
   );
-  // Disable Web Worker — not available in Node.js
-  (lib as typeof PdfjsLib).GlobalWorkerOptions.workerSrc = "";
+  // pdfjs-dist v5 requires an explicit workerSrc (empty string no longer disables the worker).
+  // Point to the bundled legacy worker so pdfjs can spawn a Node.js Worker thread.
+  const { join } = await import("path");
+  const workerPath = join(
+    process.cwd(),
+    "node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs",
+  );
+  (lib as typeof PdfjsLib).GlobalWorkerOptions.workerSrc = workerPath;
   return lib as typeof PdfjsLib;
 }
 
