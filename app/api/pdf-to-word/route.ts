@@ -1,12 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
-import { writeFile, mkdir, rm } from "fs/promises";
+import { writeFile, mkdir, rm, readFile } from "fs/promises";
 import { join, basename, extname } from "path";
 import { tmpdir } from "os";
 import { v4 as uuidv4 } from "uuid";
 import { validatePDFFiles } from "@/lib/file-validator";
 import { analyzePDFComplexity } from "@/lib/pdf-processor";
 import { checkRateLimit, getClientIP } from "@/lib/rate-limiter";
-import { extractPagesFromPDF, buildDocxBuffer } from "@/lib/pdf-to-docx";
+import { PythonShell } from "python-shell";
+
+const PYTHON_PATH =
+  process.env.PYTHON_PATH ||
+  "C:\\Users\\firma\\AppData\\Local\\Microsoft\\WindowsApps\\python.exe";
+
+async function convertWithPython(inputPath: string, outputPath: string): Promise<void> {
+  const scriptPath = join(process.cwd(), "scripts", "pdf_to_word.py");
+  await PythonShell.run(scriptPath, {
+    pythonPath: PYTHON_PATH,
+    args: [inputPath, outputPath],
+    pythonOptions: ["-u"],
+  });
+}
 
 export async function POST(request: NextRequest) {
   const clientIP = getClientIP(request);
@@ -37,17 +50,18 @@ export async function POST(request: NextRequest) {
     }
 
     const pdfBuffer = Buffer.from(await file.arrayBuffer());
-
-    // Save a copy for complexity analysis (quality score)
     const inputPath = join(sessionDir, "input.pdf");
+    const outputPath = join(sessionDir, "output.docx");
+
     await writeFile(inputPath, pdfBuffer);
-    const analysis = await analyzePDFComplexity(inputPath);
 
-    // Extract text from the PDF, then pack into a DOCX.
-    // No LibreOffice or Java required — uses pdfjs-dist + archiver.
-    const pages = await extractPagesFromPDF(pdfBuffer);
-    const docxBuffer = await buildDocxBuffer(pages);
+    // Run complexity analysis and Python conversion in parallel
+    const [analysis] = await Promise.all([
+      analyzePDFComplexity(inputPath),
+      convertWithPython(inputPath, outputPath),
+    ]);
 
+    const docxBuffer = await readFile(outputPath);
     const outputName = basename(file.name, extname(file.name)) + ".docx";
 
     return new NextResponse(new Uint8Array(docxBuffer), {
