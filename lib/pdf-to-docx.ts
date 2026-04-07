@@ -12,10 +12,40 @@ import archiver from "archiver";
 import { Writable } from "stream";
 import type * as PdfjsLib from "pdfjs-dist";
 
+// Stub out browser-only globals that pdfjs-dist tries to use during text extraction.
+// These are only needed for canvas rendering; stubs are sufficient for text-only work.
+function ensureBrowserPolyfills() {
+  if (typeof globalThis.DOMMatrix === "undefined") {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (globalThis as any).DOMMatrix = class DOMMatrix {
+      a=1;b=0;c=0;d=1;e=0;f=0;
+      constructor(_init?: string | number[]) {}
+      multiply() { return this; }
+      inverse() { return this; }
+      translate() { return this; }
+      scale() { return this; }
+      rotate() { return this; }
+    };
+  }
+  if (typeof globalThis.ImageData === "undefined") {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (globalThis as any).ImageData = class ImageData {
+      constructor(public data: Uint8ClampedArray, public width: number, public height: number) {}
+    };
+  }
+  if (typeof globalThis.Path2D === "undefined") {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (globalThis as any).Path2D = class Path2D {
+      constructor(_path?: string) {}
+    };
+  }
+}
+
 // pdfjs-dist is loaded at runtime via the legacy build (Node.js compatible).
 // The main build requires browser APIs (DOMMatrix, etc.) which are absent in Node.js.
 // Loaded lazily inside the function so Next.js never tries to bundle it at build time.
 async function getPdfjs(): Promise<typeof PdfjsLib> {
+  ensureBrowserPolyfills();
   const lib = await import(
     // eslint-disable-next-line @typescript-eslint/ban-ts-comment
     // @ts-ignore – no type declarations at this sub-path; we cast below
