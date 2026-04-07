@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import './globals.css';
+import '@/lib/cleanup-service';
 
 export const metadata: Metadata = {
   title: 'NextPDF - Professional PDF Processing Tool',
