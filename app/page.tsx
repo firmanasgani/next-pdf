@@ -122,9 +122,9 @@ const toolConfig: Record<Tool, ToolConfig> = {
     label: 'PDF → Word',
     description: 'Export PDF as an editable Word document (.docx)',
     accept: '.pdf',
-    multiple: false,
-    maxFiles: 1,
-    fileTypeLabel: 'PDF files only',
+    multiple: true,
+    maxFiles: 20,
+    fileTypeLabel: 'PDF files · max 20 files',
     icon: (
       <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.75}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
@@ -280,28 +280,46 @@ export default function Home() {
   // ── PDF → Word handler (reads custom response headers) ────────────────────
 
   const processPdfToWord = async () => {
-    const formData = new FormData();
-    formData.append('file', files[0]);
-
-    const response = await fetch('/api/pdf-to-word', { method: 'POST', body: formData });
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.error || 'Conversion failed');
+    if (files.length > 20) {
+      throw new Error('Maximum 20 files allowed for PDF to Word conversion');
     }
 
-    const score = parseInt(response.headers.get('X-Conversion-Score') ?? '0', 10);
-    const quality = (response.headers.get('X-Conversion-Quality') ?? 'fair') as ConversionQuality;
-    const notes = response.headers.get('X-Conversion-Notes') ?? '';
+    let lastScore = 0;
+    let lastQuality: ConversionQuality = 'fair';
+    let lastNotes = '';
 
-    const blob = await response.blob();
-    const outputName = files[0].name.replace(/\.pdf$/i, '.docx');
-    downloadBlob(blob, outputName);
+    for (const file of files) {
+      const formData = new FormData();
+      formData.append('file', file);
 
-    setConversionScore(score);
-    setConversionQuality(quality);
-    setConversionNotes(notes);
-    setSuccess('Export successful!');
+      const response = await fetch('/api/pdf-to-word', { method: 'POST', body: formData });
+
+      if (!response.ok) {
+        let errorMessage = `Server error (${response.status})`;
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error || errorMessage;
+        } catch {
+          if (response.status === 413) errorMessage = 'File too large to process';
+          else if (response.status === 429) errorMessage = 'Too many requests, please wait and try again';
+          else if (response.status >= 500) errorMessage = 'Conversion service unavailable, please try again later';
+        }
+        throw new Error(`${file.name}: ${errorMessage}`);
+      }
+
+      lastScore = parseInt(response.headers.get('X-Conversion-Score') ?? '0', 10);
+      lastQuality = (response.headers.get('X-Conversion-Quality') ?? 'fair') as ConversionQuality;
+      lastNotes = response.headers.get('X-Conversion-Notes') ?? '';
+
+      const blob = await response.blob();
+      const outputName = file.name.replace(/\.pdf$/i, '.docx');
+      downloadBlob(blob, outputName);
+    }
+
+    setConversionScore(lastScore);
+    setConversionQuality(lastQuality);
+    setConversionNotes(lastNotes);
+    setSuccess(files.length > 1 ? `${files.length} files exported successfully!` : 'Export successful!');
     setFiles([]);
   };
 
