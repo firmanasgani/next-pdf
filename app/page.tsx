@@ -19,6 +19,16 @@ const PDFAnnotator = dynamic(() => import('@/components/PDFAnnotator'), {
   loading: () => <div className={styles.loading}>Loading PDF Annotator...</div>,
 });
 
+const ImageEditor = dynamic(() => import('@/components/ImageEditor'), {
+  ssr: false,
+  loading: () => <div className={styles.loading}>Loading Image Editor...</div>,
+});
+
+const BackgroundRemover = dynamic(() => import('@/components/BackgroundRemover'), {
+  ssr: false,
+  loading: () => <div className={styles.loading}>Loading Background Remover...</div>,
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────────────────────────────────────
@@ -32,7 +42,9 @@ type Tool =
   | 'pdf-to-word'
   | 'word-to-pdf'
   | 'image-to-pdf'
-  | 'ppt-to-pdf';
+  | 'ppt-to-pdf'
+  | 'image-edit'
+  | 'remove-bg';
 
 type Quality = 'screen' | 'ebook' | 'printer' | 'prepress';
 
@@ -170,6 +182,32 @@ const toolConfig: Record<Tool, ToolConfig> = {
       </svg>
     ),
   },
+  'image-edit': {
+    label: 'Edit Image',
+    description: 'Crop, rotate, and resize images',
+    accept: '.jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp',
+    multiple: false,
+    maxFiles: 1,
+    fileTypeLabel: 'JPEG, PNG, or WebP',
+    icon: (
+      <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.75}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M6 3v14a2 2 0 002 2h14M3 6h14a2 2 0 012 2v14" />
+      </svg>
+    ),
+  },
+  'remove-bg': {
+    label: 'Remove Background',
+    description: 'Automatically remove the background from an image',
+    accept: '.jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp',
+    multiple: false,
+    maxFiles: 1,
+    fileTypeLabel: 'JPEG, PNG, or WebP',
+    icon: (
+      <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.75}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 9.75l-4.5 4.5m0 0L3 12m2.25 2.25L3 16.5m6.75-6.75L12 12m-2.25-2.25L12 7.5m2.25 6.75L21 21m0 0v-4.5m0 4.5H16.5m4.5-13.5L14.25 9.75" />
+      </svg>
+    ),
+  },
 };
 
 const toolGroups: { label: string; tools: Tool[] }[] = [
@@ -184,6 +222,10 @@ const toolGroups: { label: string; tools: Tool[] }[] = [
   {
     label: 'Convert to PDF',
     tools: ['word-to-pdf', 'image-to-pdf', 'ppt-to-pdf'],
+  },
+  {
+    label: 'Image Tools',
+    tools: ['image-edit', 'remove-bg'],
   },
 ];
 
@@ -210,6 +252,8 @@ export default function Home() {
   const [success, setSuccess] = useState<string | null>(null);
   const [showEditor, setShowEditor] = useState(false);
   const [showAnnotator, setShowAnnotator] = useState(false);
+  const [showImageEditor, setShowImageEditor] = useState(false);
+  const [showBgRemover, setShowBgRemover] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // Compress options
@@ -420,6 +464,34 @@ export default function Home() {
     setFiles([]);
   };
 
+  const handleOpenImageEditor = () => {
+    if (files.length === 0) { setError('Please select an image file first'); return; }
+    setShowImageEditor(true);
+    setError(null);
+    setSuccess(null);
+  };
+
+  const handleImageEditorSave = (blob: Blob, filename: string) => {
+    setShowImageEditor(false);
+    downloadBlob(blob, filename);
+    setSuccess('Image edited successfully!');
+    setFiles([]);
+  };
+
+  const handleOpenBgRemover = () => {
+    if (files.length === 0) { setError('Please select an image file first'); return; }
+    setShowBgRemover(true);
+    setError(null);
+    setSuccess(null);
+  };
+
+  const handleBgRemoverDone = (blob: Blob, filename: string) => {
+    setShowBgRemover(false);
+    downloadBlob(blob, filename);
+    setSuccess('Background removed successfully!');
+    setFiles([]);
+  };
+
   // ── Tool switching ─────────────────────────────────────────────────────────
 
   const handleToolChange = (tool: Tool) => {
@@ -433,6 +505,8 @@ export default function Home() {
     setConversionNotes('');
     setShowEditor(false);
     setShowAnnotator(false);
+    setShowImageEditor(false);
+    setShowBgRemover(false);
     setSidebarOpen(false);
   };
 
@@ -460,6 +534,8 @@ export default function Home() {
     if (loading) return null;
     if (selectedTool === 'modify') return 'Open Editor';
     if (selectedTool === 'annotate') return 'Open Annotator';
+    if (selectedTool === 'image-edit') return 'Open Image Editor';
+    if (selectedTool === 'remove-bg') return 'Remove Background';
     if (isExportTool) return 'Export to Word';
     if (isConvertToPdf) return 'Convert to PDF';
     return 'Process PDF';
@@ -468,6 +544,8 @@ export default function Home() {
   const getButtonAction = () => {
     if (selectedTool === 'modify') return handleOpenEditor;
     if (selectedTool === 'annotate') return handleOpenAnnotator;
+    if (selectedTool === 'image-edit') return handleOpenImageEditor;
+    if (selectedTool === 'remove-bg') return handleOpenBgRemover;
     return handleProcess;
   };
 
@@ -549,7 +627,19 @@ export default function Home() {
 
         {/* ── Main content ──────────────────────────────────────────────────── */}
         <main className={styles.main}>
-          {showAnnotator && files.length > 0 ? (
+          {showBgRemover && files.length > 0 ? (
+            <BackgroundRemover
+              file={files[0]}
+              onDone={handleBgRemoverDone}
+              onCancel={() => setShowBgRemover(false)}
+            />
+          ) : showImageEditor && files.length > 0 ? (
+            <ImageEditor
+              file={files[0]}
+              onSave={handleImageEditorSave}
+              onCancel={() => setShowImageEditor(false)}
+            />
+          ) : showAnnotator && files.length > 0 ? (
             <PDFAnnotator
               file={files[0]}
               onSave={handleAnnotatorSave}

@@ -9,9 +9,11 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@imgly/background-removal": "^1.7.0",
     "@types/archiver": "^7.0.0",
     "archiver": "^7.0.1",
     "next": "16.1.4",
+    "onnxruntime-web": "^1.21.0-dev.20250206-d981b153d3",
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^5.4.530",
     "python-shell": "^5.0.0",
