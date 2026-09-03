@@ -1,3 +1,40 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+   NextPDF — "electronic" theme
+   Dark circuit-board surface, cyan/indigo neon accents, monospace signage.
+   ───────────────────────────────────────────────────────────────────────────── */
+
+:root {
+  /* Surfaces */
+  --bg: #05070d;
+  --bg-elev: #0a0f1c;
+  --panel: #0d1424;
+  --panel-2: #111b30;
+  --panel-3: #16233c;
+
+  /* Lines */
+  --border: #1c2b45;
+  --border-strong: #26395a;
+  --grid: rgba(56, 189, 248, 0.055);
+
+  /* Text */
+  --text: #d7e3f4;
+  --text-dim: #8fa2bf;
+  --text-mute: #5c6f8c;
+
+  /* Accents */
+  --accent: #38bdf8;
+  --accent-strong: #0ea5e9;
+  --accent-indigo: #6366f1;
+  --accent-green: #34d399;
+  --accent-amber: #fbbf24;
+  --accent-red: #f87171;
+
+  --glow-cyan: 0 0 0 1px rgba(56, 189, 248, 0.35), 0 0 22px rgba(56, 189, 248, 0.18);
+  --glow-indigo: 0 0 0 1px rgba(99, 102, 241, 0.4), 0 0 22px rgba(99, 102, 241, 0.2);
+
+  --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", "Fira Code", Menlo, Consolas, monospace;
+}
+
 * {
   box-sizing: border-box;
   padding: 0;
@@ -8,16 +45,32 @@ html,
 body {
   max-width: 100vw;
   overflow-x: hidden;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen",
+    "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
 body {
-  color: #1e293b;
-  background: #ffffff;
+  color: var(--text);
+  background: var(--bg);
+  position: relative;
+  min-height: 100vh;
+}
+
+/* Circuit grid + ambient glow behind everything */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image:
+    radial-gradient(1100px 600px at 12% -10%, rgba(56, 189, 248, 0.12), transparent 60%),
+    radial-gradient(900px 600px at 100% 0%, rgba(99, 102, 241, 0.12), transparent 55%),
+    linear-gradient(var(--grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size: 100% 100%, 100% 100%, 44px 44px, 44px 44px;
 }
 
 a {
@@ -42,14 +95,20 @@ textarea {
 }
 
 ::-webkit-scrollbar-track {
-  background: #f1f5f9;
+  background: var(--bg-elev);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #cbd5e0;
+  background: var(--panel-3);
   border-radius: 5px;
+  border: 2px solid var(--bg-elev);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  background: var(--border-strong);
+}
+
+::selection {
+  background: rgba(56, 189, 248, 0.3);
+  color: #fff;
 }
